@@ -55,7 +55,7 @@ Built the sandbox page and both live pickers, verified the round-trip through a 
 
 Paste into a fresh window:
 
-> Continuing Head for the Hills (PZ B42.20 start-scenario mod) at `c:\xampp\htdocs\pz-head-for-the-hills`, session 5. Checked out on branch `session4-generator-and-placement` at 8f8f5ed, tree clean. 6 open issues (#1 #2 #3 #6 #7 #9), one open PR (#8). `main` is at 03fde5d and does **not** have the session-4 fixes.
+> Continuing Head for the Hills (PZ B42.20 start-scenario mod) at `c:\xampp\htdocs\pz-head-for-the-hills`, session 5. Checked out on branch `session4-generator-and-placement`, tip is the "Session 4 handoff" commit, tree clean. 6 open issues (#1 #2 #3 #6 #7 #9), one open PR (#8). `main` is at 03fde5d and does **not** have the session-4 fixes.
 >
 > PR #8 fixes the generator failing to start at world creation and rewrites placement to Rob's spec. It is syntax-checked but **never run in a live world**.
 >
