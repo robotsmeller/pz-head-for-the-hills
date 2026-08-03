@@ -1,0 +1,6 @@
+name=Head for the Hills!
+id=HeadForTheHills
+description=Start scenario: your survivor saw it coming and got out ahead of the outbreak, up to a remote cabin. Starts stocked with basic supplies and a vehicle nearby, with no zombies for a stretch around the property. The nearest town is still a drive away if you want to push your luck.
+modversion=0.1.0
+versionMin=42.20.0
+url=https://github.com/robotsmeller/pz-head-for-the-hills

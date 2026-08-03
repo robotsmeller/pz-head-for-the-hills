@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(c:\\xampp\\htdocs\\pz-head-for-the-hills\\.claude\\context.md)",
+      "Edit(c:\\xampp\\htdocs\\pz-head-for-the-hills\\.claude\\context.md)",
+      "Write(c:\\xampp\\htdocs\\pz-head-for-the-hills\\.claude\\context.md)",
+      "Read(c:\\xampp\\htdocs\\pz-head-for-the-hills\\CLAUDE.md)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/secrets-blocker.cjs"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/pii-blocker.cjs"
+          }
+        ]
+      }
+    ]
+  }
+}
