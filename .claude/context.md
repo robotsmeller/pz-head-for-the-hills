@@ -52,7 +52,7 @@ Confirmed spawn regions, zombie density, starting kits and vehicle spawns are ac
 
 Paste into a fresh window:
 
-> Continuing Head for the Hills (PZ B42.20 start-scenario mod) at `c:\xampp\htdocs\pz-head-for-the-hills`, session 4. `main` at fe0784d, tree clean, 5 open issues (#1 #2 #3 #6 #7).
+> Continuing Head for the Hills (PZ B42.20 start-scenario mod) at `c:\xampp\htdocs\pz-head-for-the-hills`, session 4. `main` tip is the "Session 3 handoff" commit, tree clean, 5 open issues (#1 #2 #3 #6 #7). Session 3's work landed in e0dc8a1, 88f72f4, 93ff97d, fe0784d.
 >
 > `SpawnScenario.lua` is now **verified in a live world** for equipment, vehicle, well, zombie radius and season. One gap remains.
 >
