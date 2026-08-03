@@ -1,0 +1,193 @@
+"""
+Head for the Hills! - live API verification.
+
+Drives a running PZ instance through the pz-test-pilot harness to confirm the
+engine APIs the sandbox pickers depend on actually behave as the code assumes.
+Static reading of the vanilla/decompiled sources got us this far; this closes the
+gap between "the source says X" and "the running build does X".
+
+Requires: PZ running, a save loaded (the harness registers on OnGameStart), and
+the PZTestPilot mod enabled.
+
+    python tests/api_checks.py
+"""
+
+import os
+import sys
+from pathlib import Path
+
+# Sibling checkout by default; override when pz-test-pilot lives elsewhere.
+TEST_PILOT_ROOT = Path(
+    os.environ.get("PZ_TEST_PILOT", Path(__file__).resolve().parents[2] / "pz-test-pilot")
+)
+TEST_PILOT_SCRIPTS = TEST_PILOT_ROOT / "scripts"
+if not TEST_PILOT_SCRIPTS.is_dir():
+    sys.exit(
+        f"pz-test-pilot not found at {TEST_PILOT_ROOT}\n"
+        "Set PZ_TEST_PILOT to its checkout path."
+    )
+sys.path.insert(0, str(TEST_PILOT_SCRIPTS))
+
+from config import load as load_config          # noqa: E402
+from _ipc import send_command, CommandTimeout, HarnessDead  # noqa: E402
+
+
+# Each check returns a single scalar (string/number) - complex tables do not
+# survive the JSON hop reliably, so every Lua chunk stringifies its own result.
+CHECKS = [
+    (
+        "vehicle_enum",
+        "getAllVehicleScripts() returns a non-empty list",
+        """
+        local sm = getScriptManager()
+        local v = sm:getAllVehicleScripts()
+        return "count=" .. tostring(v:size())
+        """,
+    ),
+    (
+        "vehicle_name_api",
+        "VehicleScript:getName()/getFullName() are callable",
+        """
+        local v = getScriptManager():getAllVehicleScripts()
+        if v:size() == 0 then return "NO VEHICLES" end
+        local s = v:get(0)
+        local okName, name = pcall(function() return s:getName() end)
+        local okFull, full = pcall(function() return s:getFullName() end)
+        return "getName=" .. tostring(okName) .. ":" .. tostring(name)
+            .. " getFullName=" .. tostring(okFull) .. ":" .. tostring(full)
+        """,
+    ),
+    (
+        "vehicle_displayname_throws",
+        "VehicleScript:getDisplayName() absent (justifies using getName)",
+        """
+        local v = getScriptManager():getAllVehicleScripts()
+        if v:size() == 0 then return "NO VEHICLES" end
+        local ok, err = pcall(function() return v:get(0):getDisplayName() end)
+        return "pcall_ok=" .. tostring(ok) .. " err=" .. tostring(err)
+        """,
+    ),
+    (
+        "fallback_vehicle_present",
+        "Base.PickUpTruck exists in the enumerated list",
+        """
+        local v = getScriptManager():getAllVehicleScripts()
+        for i = 0, v:size() - 1 do
+            if v:get(i):getFullName() == "Base.PickUpTruck" then return "FOUND" end
+        end
+        return "MISSING"
+        """,
+    ),
+    (
+        "item_enum",
+        "getAllItems() returns a non-empty list",
+        """
+        local items = getScriptManager():getAllItems()
+        return "count=" .. tostring(items:size())
+        """,
+    ),
+    (
+        "item_displayname_safe",
+        "Item:getDisplayName() is safe across every loaded item",
+        """
+        local items = getScriptManager():getAllItems()
+        local failures = 0
+        local firstErr = ""
+        for i = 0, items:size() - 1 do
+            local ok, err = pcall(function() return items:get(i):getDisplayName() end)
+            if not ok then
+                failures = failures + 1
+                if firstErr == "" then firstErr = tostring(err) end
+            end
+        end
+        return "total=" .. tostring(items:size()) .. " failures=" .. tostring(failures)
+            .. " firstErr=" .. firstErr
+        """,
+    ),
+    (
+        "item_fullname_safe",
+        "Item:getFullName() is safe across every loaded item",
+        """
+        local items = getScriptManager():getAllItems()
+        local failures = 0
+        for i = 0, items:size() - 1 do
+            local ok = pcall(function() return items:get(i):getFullName() end)
+            if not ok then failures = failures + 1 end
+        end
+        return "total=" .. tostring(items:size()) .. " failures=" .. tostring(failures)
+        """,
+    ),
+    (
+        "sandbox_vars_present",
+        "HeadForTheHills sandbox vars reached the loaded save",
+        """
+        if not SandboxVars then return "NO SandboxVars" end
+        local h = SandboxVars.HeadForTheHills
+        if not h then return "MISSING SandboxVars.HeadForTheHills" end
+        local keys = {}
+        for k, v in pairs(h) do keys[#keys+1] = k .. "=" .. tostring(v) end
+        table.sort(keys)
+        return table.concat(keys, " | ")
+        """,
+    ),
+    (
+        "sandbox_option_registry",
+        "Options registered with the engine option registry",
+        """
+        local opts = getSandboxOptions()
+        local found = {}
+        for i = 1, opts:getNumOptions() do
+            local o = opts:getOptionByIndex(i-1)
+            local n = o:getName()
+            if string.find(n, "HeadForTheHills", 1, true) then
+                found[#found+1] = n .. "(" .. tostring(o:getType()) .. ")"
+            end
+        end
+        table.sort(found)
+        if #found == 0 then return "NONE REGISTERED" end
+        return tostring(#found) .. ": " .. table.concat(found, ", ")
+        """,
+    ),
+    (
+        "vanilla_spawn_removal_var",
+        "Vanilla ZombieLore.PlayerSpawnZombieRemoval is readable/overridable",
+        """
+        if not SandboxVars or not SandboxVars.ZombieLore then return "NO ZombieLore" end
+        return "value=" .. tostring(SandboxVars.ZombieLore.PlayerSpawnZombieRemoval)
+        """,
+    ),
+]
+
+
+def main():
+    cfg = load_config(TEST_PILOT_SCRIPTS.parent / "pz-test-pilot.json")
+
+    passed, failed = 0, 0
+    for name, description, code in CHECKS:
+        chunk = " ".join(line.strip() for line in code.strip().splitlines())
+        try:
+            result = send_command(cfg, "run_lua", {"code": chunk})
+        except CommandTimeout:
+            print(f"[TIMEOUT] {name}: {description}")
+            print("          Is PZ running with a save loaded?")
+            failed += 1
+            continue
+        except HarnessDead as exc:
+            print(f"[DEAD]    harness not responding: {exc}")
+            return 2
+
+        if result.get("status") == "ok":
+            value = result.get("result", result)
+            print(f"[OK]      {name}: {value}")
+            passed += 1
+        else:
+            print(f"[FAIL]    {name}: {description}")
+            print(f"          {result.get('error', result)}")
+            failed += 1
+
+    print(f"\n{passed} passed, {failed} failed")
+    return 0 if failed == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

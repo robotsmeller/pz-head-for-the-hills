@@ -1,0 +1,41 @@
+Sandbox_EN = {
+
+	Sandbox_HeadForTheHills = "Head for the Hills!",
+
+	Sandbox_HeadForTheHills_ZombieFreeRadius = "Zombie-Free Radius (tiles)",
+	Sandbox_HeadForTheHills_ZombieFreeRadius_tooltip = "How many tiles around the starting cabin stay clear of zombies. Set to 0 to let normal zombie density apply right up to the property.",
+
+	Sandbox_HeadForTheHills_SpawnWell = "Spawn Well If Missing",
+	Sandbox_HeadForTheHills_SpawnWell_tooltip = "If the chosen cabin doesn't already have a well on the property, spawn one nearby. Existing wells are always left as-is.",
+
+	Sandbox_HeadForTheHills_SpawnGenerator = "Spawn Generator If Missing",
+	Sandbox_HeadForTheHills_SpawnGenerator_tooltip = "If the chosen cabin doesn't already have a generator, spawn one adjacent to the building. Existing generators are always left as-is.",
+
+	Sandbox_HeadForTheHills_GeneratorFueledAndRunning = "Generator Starts Fueled and Running",
+	Sandbox_HeadForTheHills_GeneratorFueledAndRunning_tooltip = "If a generator is spawned, start it already fueled, connected, and switched on. Disable this for a generator that still needs fuel and manual startup.",
+
+	Sandbox_HeadForTheHills_Season = "Starting Season",
+	Sandbox_HeadForTheHills_Season_tooltip = "The season the game starts in.",
+	Sandbox_HeadForTheHills_Season_option1 = "Spring",
+	Sandbox_HeadForTheHills_Season_option2 = "Summer",
+	Sandbox_HeadForTheHills_Season_option3 = "Fall",
+	Sandbox_HeadForTheHills_Season_option4 = "Winter",
+
+	Sandbox_HeadForTheHills_SpawnVehicle = "Spawn Starting Vehicle",
+	Sandbox_HeadForTheHills_SpawnVehicle_tooltip = "Spawn a vehicle near the cabin.",
+
+	Sandbox_HeadForTheHills_StartingVehicle = "Starting Vehicle",
+	Sandbox_HeadForTheHills_StartingVehicle_tooltip = "Which vehicle spawns near the cabin. The list includes every vehicle from vanilla and any currently installed vehicle mods.",
+
+	Sandbox_HeadForTheHills_VehicleCondition = "Starting Vehicle Condition (%)",
+	Sandbox_HeadForTheHills_VehicleCondition_tooltip = "Overall condition of the starting vehicle, if one is spawned.",
+
+	Sandbox_HeadForTheHills_VehicleFuel = "Starting Vehicle Fuel (%)",
+	Sandbox_HeadForTheHills_VehicleFuel_tooltip = "Fuel tank level of the starting vehicle, if one is spawned.",
+
+	Sandbox_HeadForTheHills_SpawnStartingEquipment = "Add Custom Starting Equipment",
+	Sandbox_HeadForTheHills_SpawnStartingEquipment_tooltip = "Add the items chosen below to your starting inventory, on top of your normal trait/occupation loadout.",
+
+	Sandbox_HeadForTheHills_StartingEquipmentList = "Starting Equipment",
+	Sandbox_HeadForTheHills_StartingEquipmentList_tooltip = "Pick any number of items, from vanilla or any currently installed item mod, to spawn with.",
+}

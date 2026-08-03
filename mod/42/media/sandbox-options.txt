@@ -1,0 +1,67 @@
+VERSION = 1,
+
+option HeadForTheHills.ZombieFreeRadius
+{
+	type = integer, min = 0, max = 20, default = 5,
+	page = HeadForTheHills, translation = HeadForTheHills_ZombieFreeRadius,
+}
+
+option HeadForTheHills.SpawnWell
+{
+	type = boolean, default = true,
+	page = HeadForTheHills, translation = HeadForTheHills_SpawnWell,
+}
+
+option HeadForTheHills.SpawnGenerator
+{
+	type = boolean, default = true,
+	page = HeadForTheHills, translation = HeadForTheHills_SpawnGenerator,
+}
+
+option HeadForTheHills.GeneratorFueledAndRunning
+{
+	type = boolean, default = true,
+	page = HeadForTheHills, translation = HeadForTheHills_GeneratorFueledAndRunning,
+}
+
+option HeadForTheHills.Season
+{
+	type = enum, numValues = 4, default = 1,
+	page = HeadForTheHills, translation = HeadForTheHills_Season, valueTranslation = HeadForTheHills_Season,
+}
+
+option HeadForTheHills.SpawnVehicle
+{
+	type = boolean, default = true,
+	page = HeadForTheHills, translation = HeadForTheHills_SpawnVehicle,
+}
+
+option HeadForTheHills.StartingVehicle
+{
+	type = string, default = Base.PickUpTruck,
+	page = HeadForTheHills, translation = HeadForTheHills_StartingVehicle,
+}
+
+option HeadForTheHills.VehicleCondition
+{
+	type = integer, min = 0, max = 100, default = 70,
+	page = HeadForTheHills, translation = HeadForTheHills_VehicleCondition,
+}
+
+option HeadForTheHills.VehicleFuel
+{
+	type = integer, min = 0, max = 100, default = 50,
+	page = HeadForTheHills, translation = HeadForTheHills_VehicleFuel,
+}
+
+option HeadForTheHills.SpawnStartingEquipment
+{
+	type = boolean, default = true,
+	page = HeadForTheHills, translation = HeadForTheHills_SpawnStartingEquipment,
+}
+
+option HeadForTheHills.StartingEquipmentList
+{
+	type = string, default = ,
+	page = HeadForTheHills, translation = HeadForTheHills_StartingEquipmentList,
+}
