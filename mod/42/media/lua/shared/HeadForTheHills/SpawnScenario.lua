@@ -32,8 +32,21 @@ local WELL_SPRITE = "camping_01_16"
 local VEHICLE_MIN_RADIUS = 6
 local VEHICLE_SEARCH_RADIUS = 16
 local OBJECT_MIN_RADIUS = 2
-local OBJECT_SEARCH_RADIUS = 10
+local OBJECT_SEARCH_RADIUS = 12
 local EXISTING_OBJECT_SCAN_RADIUS = 12
+
+-- How far from the nearest building wall a placement has to sit. "Not inside
+-- the footprint" turned out not to mean "clear of the building": the first
+-- live run put the well and the generator on the closest legal square, which
+-- was hard against the wall at the foot of the porch steps. Measured in tiles
+-- from the square in every direction, so 3 leaves a walkable gap.
+local BUILDING_CLEARANCE = 3
+local VEHICLE_BUILDING_CLEARANCE = 2
+
+-- Keep the well and the generator from landing on top of each other. They are
+-- placed by the same search from the same centre, so without this the second
+-- one takes the square next to the first.
+local GENERATOR_WELL_GAP = 1
 
 -- How much open ground each placement needs around its own square. A vehicle
 -- body spans several tiles, so one free square is not enough to judge by.
@@ -74,13 +87,81 @@ local function findSquare(centre, minRadius, maxRadius, accept)
     return nil
 end
 
---- Outdoors, not part of a building's footprint, and clear enough to place on.
---- getBuilding() is what keeps wells and generators off the cabin's interior
---- tiles; isOutside() alone would still allow a porch or enclosed shed.
+local function startsWith(text, prefix)
+    return string.sub(text, 1, string.len(prefix)) == prefix
+end
+
+--- Standing water, including the river and pond squares that carry the tainted
+--- flag rather than the plain one. Vanilla reads this off the floor sprite's
+--- own properties in ISWoodenStairs.lua and buildRecipeCode.lua, so this does
+--- the same rather than matching sprite names by hand.
+local function isWaterSquare(square)
+    local floor = square:getFloor()
+    if not floor then return false end
+    local sprite = floor:getSprite()
+    local properties = sprite and sprite:getProperties()
+    if properties and properties:has(IsoFlagType.water) then return true end
+    local squareProperties = square:getProperties()
+    return squareProperties ~= nil and squareProperties:has(IsoFlagType.taintedWater)
+end
+
+--- Bare dirt or grass, rather than pavement, gravel, sand or clay.
+--- Vanilla classifies ground by floor sprite name in
+--- server/BuildingObjects/ISShovelGroundCursor.lua (GetDirtGravelSand): the two
+--- natural prefixes below are its "dirt" case, and NOT_SOFT_GROUND is the exact
+--- set it peels off first as gravel, sand and clay. Grass needs no separate
+--- test because PZ draws it as the natural blend itself, not as an overlay.
+local SOFT_GROUND_PREFIXES = { "blends_natural_01_", "floors_exterior_natural" }
+local NOT_SOFT_GROUND = {
+    -- gravel
+    ["floors_exterior_natural_01_13"] = true, ["blends_street_01_55"] = true,
+    ["blends_street_01_54"] = true, ["blends_street_01_53"] = true,
+    ["blends_street_01_48"] = true,
+    -- sand
+    ["blends_natural_01_0"] = true, ["blends_natural_01_5"] = true,
+    ["blends_natural_01_6"] = true, ["blends_natural_01_7"] = true,
+    ["floors_exterior_natural_01_24"] = true,
+    -- clay
+    ["blends_natural_01_96"] = true, ["blends_natural_01_101"] = true,
+    ["blends_natural_01_102"] = true, ["blends_natural_01_103"] = true,
+}
+
+local function isSoftGround(square)
+    local floor = square:getFloor()
+    if not floor then return false end
+    local sprite = floor:getSprite()
+    local name = sprite and sprite:getName()
+    if not name or NOT_SOFT_GROUND[name] then return false end
+    for _, prefix in ipairs(SOFT_GROUND_PREFIXES) do
+        if startsWith(name, prefix) then return true end
+    end
+    return false
+end
+
+--- No building within margin tiles in any direction. getBuilding() on the
+--- square alone only answers "am I standing in one", which is how the first
+--- live run ended up with the well and the generator flat against the wall.
+local function isClearOfBuildings(square, margin)
+    local x, y, z = square:getX(), square:getY(), square:getZ()
+    for dx = -margin, margin do
+        for dy = -margin, margin do
+            local neighbour = getSquare(x + dx, y + dy, z)
+            if neighbour and neighbour:getBuilding() ~= nil then return false end
+        end
+    end
+    return true
+end
+
+--- Outdoors, not part of a building's footprint, dry, and clear enough to place
+--- on. getBuilding() is what keeps wells and generators off the cabin's interior
+--- tiles; isOutside() alone would still allow a porch or enclosed shed. The
+--- water test lives here so it covers the vehicle's whole clearance ring too,
+--- not just the square its wheels land on.
 local function isOpenGround(square)
     return square:isOutside()
         and square:getBuilding() == nil
         and square:isFree(false)
+        and not isWaterSquare(square)
 end
 
 --- True if the square is a doorway or sits directly beside one. Sealing the
@@ -97,10 +178,12 @@ local function blocksDoorway(square)
                     local object = objects:get(i)
                     if instanceof(object, "IsoDoor") then return true end
                     -- Player-built and some map doors are thumpables, which are
-                    -- only doors at runtime, so ask rather than assume.
-                    local isDoor = false
-                    pcall(function() isDoor = object:isDoor() end)
-                    if isDoor then return true end
+                    -- only doors at runtime, so ask rather than assume. Test for
+                    -- the method before calling it: most IsoObjects do not have
+                    -- one, and calling it anyway throws. pcall catches that, but
+                    -- PZ still dumps a full Java stack trace to console.txt for
+                    -- every throw - measured at 234 of them in one world start.
+                    if object.isDoor and object:isDoor() then return true end
                 end
             end
         end
@@ -121,18 +204,56 @@ local function hasClearance(square, margin)
     return true
 end
 
+-- Where the well went this spawn, so the generator does not end up leaning on
+-- it. Both are placed by the same search from the same centre, so without this
+-- the second one takes the square next to the first. Cleared per spawn rather
+-- than left over from a previous character.
+local wellSquare = nil
+
+--- Somewhere a well or a generator can stand and still look deliberate: bare
+--- dirt or grass, out in the open, a walkable gap from the building, and not
+--- sealing a door.
 local function isObjectSpot(square)
-    return isOpenGround(square) and not blocksDoorway(square)
+    return isOpenGround(square)
+        and isSoftGround(square)
+        and isClearOfBuildings(square, BUILDING_CLEARANCE)
+        and not blocksDoorway(square)
+end
+
+--- The same, minus the ground-type and full building-clearance rules. A cabin
+--- ringed by gravel or hard against a treeline would otherwise get nothing at
+--- all, and a well on the wrong ground beats no water source.
+local function isFallbackObjectSpot(square)
+    return isOpenGround(square)
+        and isClearOfBuildings(square, 1)
+        and not blocksDoorway(square)
+end
+
+local function isAwayFromWell(square)
+    if not wellSquare then return true end
+    local gap = math.max(math.abs(square:getX() - wellSquare.x),
+                         math.abs(square:getY() - wellSquare.y))
+    return gap > GENERATOR_WELL_GAP
+end
+
+local function isGeneratorSpot(square)
+    return isAwayFromWell(square) and isObjectSpot(square)
+end
+
+local function isFallbackGeneratorSpot(square)
+    return isAwayFromWell(square) and isFallbackObjectSpot(square)
 end
 
 local function isVehicleSpot(square)
     return isOpenGround(square)
+        and isClearOfBuildings(square, VEHICLE_BUILDING_CLEARANCE)
         and hasClearance(square, VEHICLE_CLEARANCE)
         and not blocksDoorway(square)
 end
 
 local function isTightVehicleSpot(square)
     return isOpenGround(square)
+        and isClearOfBuildings(square, VEHICLE_BUILDING_CLEARANCE)
         and hasClearance(square, VEHICLE_FALLBACK_CLEARANCE)
         and not blocksDoorway(square)
 end
@@ -183,13 +304,21 @@ local function giveStartingEquipment(playerObj, opts)
     if not list or list == "" then return end
 
     local inventory = playerObj:getInventory()
+    local issued = {}
     for fullName in string.gmatch(list, "([^;]+)") do
-        -- A chosen item can vanish if the mod that supplied it was removed
-        -- between world creation and this spawn, so never let one bad entry
-        -- abort the rest of the loadout.
-        local ok = pcall(function() inventory:AddItem(fullName) end)
-        if not ok then
-            print("[HeadForTheHills] could not add starting item: " .. tostring(fullName))
+        -- One entry, one item. The picker keys its selection by full name so it
+        -- cannot emit a duplicate, but the option is a plain string that a
+        -- server admin or a hand-edited save can repeat, and handing the player
+        -- the same thing twice reads as a bug either way.
+        if not issued[fullName] then
+            issued[fullName] = true
+            -- A chosen item can vanish if the mod that supplied it was removed
+            -- between world creation and this spawn, so never let one bad entry
+            -- abort the rest of the loadout.
+            local ok = pcall(function() inventory:AddItem(fullName) end)
+            if not ok then
+                print("[HeadForTheHills] could not add starting item: " .. tostring(fullName))
+            end
         end
     end
 end
@@ -275,6 +404,72 @@ local function fuelAndStart(generator)
     pcall(function() generator:setFuel(generator:getMaxFuel()) end)
     generator:setConnected(true)
     generator:setActivated(true)
+    -- Vanilla's ISActivateGenerator:complete() syncs after flipping the switch.
+    -- transmitCompleteItemToClients, which the callers below use, is the shape
+    -- MOGenerator.lua uses for a generator it just *created*; sync is the one
+    -- for a generator whose state changed.
+    pcall(function() generator:sync() end)
+end
+
+-- Starting a generator from inside OnNewGame does not stick. Measured live
+-- (session 4): a generator created and started there came back fuel 0,
+-- disconnected and off, with no error raised - and at condition 100 on sprite
+-- appliances_misc_01_0, which is exactly what MOGenerator.lua's
+-- ReplaceExistingObject builds. That file registers handlers on that very
+-- sprite, so a map-object pass over the chunk after our write is the likely
+-- culprit. The identical call sequence works a moment later, so rather than
+-- race whatever runs during world init, re-apply once the world is running.
+-- Ticks do not run during IsoWorld.init, so the first one is already past it.
+local REASSERT_TICKS = 30
+local pendingStart = nil
+local reassertGenerator
+
+--- Re-find the generator we started and start it again if something undid it.
+reassertGenerator = function()
+    if not pendingStart then
+        Events.OnTick.Remove(reassertGenerator)
+        return
+    end
+
+    pendingStart.ticks = pendingStart.ticks - 1
+    if pendingStart.ticks > 0 then return end
+
+    local target = pendingStart
+    pendingStart = nil
+    Events.OnTick.Remove(reassertGenerator)
+
+    local square = getSquare(target.x, target.y, target.z)
+    if not square then
+        print("[HeadForTheHills] generator square never loaded; cannot start it")
+        return
+    end
+
+    -- Radius 1, not the wider scan: if the object was replaced it is on the
+    -- same square, and a wider search could adopt an unrelated generator.
+    local generator = findObjectNearby(square, 1, function(object)
+        return instanceof(object, "IsoGenerator")
+    end)
+    if not generator then
+        print("[HeadForTheHills] generator went missing before it could be started")
+        return
+    end
+
+    if generator:isActivated() and generator:getFuel() > 0 then return end
+
+    print("[HeadForTheHills] generator was not running after world init; starting it")
+    fuelAndStart(generator)
+    pcall(function() generator:transmitCompleteItemToClients() end)
+end
+
+local function startWhenSettled(generator)
+    local square = generator:getSquare()
+    if not square then return end
+    if pendingStart then Events.OnTick.Remove(reassertGenerator) end
+    pendingStart = {
+        x = square:getX(), y = square:getY(), z = square:getZ(),
+        ticks = REASSERT_TICKS,
+    }
+    Events.OnTick.Add(reassertGenerator)
 end
 
 --- Detect an existing well or other standing water source.
@@ -316,13 +511,24 @@ local function spawnGenerator(playerObj, opts)
             -- that across. The freshly spawned path below transmits for the
             -- same reason.
             pcall(function() existing:transmitCompleteItemToClients() end)
+            -- A map generator is built by the same world-init pass that eats
+            -- our write, so this branch needs the re-check too.
+            startWhenSettled(existing)
         end
         return
     end
 
-    -- Open ground only, so the generator lands beside the cabin and never
-    -- inside it, and clear of doorways so it cannot seal the player in.
-    local square = findSquare(centre, OBJECT_MIN_RADIUS, OBJECT_SEARCH_RADIUS, isObjectSpot)
+    -- Bare ground a walkable gap from the building, clear of doorways so it
+    -- cannot seal the player in, and not right up against the well.
+    local square = findSquare(centre, OBJECT_MIN_RADIUS, OBJECT_SEARCH_RADIUS, isGeneratorSpot)
+    if not square then
+        square = findSquare(centre, OBJECT_MIN_RADIUS, OBJECT_SEARCH_RADIUS,
+                            isFallbackGeneratorSpot)
+        if square then
+            print("[HeadForTheHills] no bare ground clear of the building for the "
+                  .. "generator; using " .. square:getX() .. "," .. square:getY())
+        end
+    end
     if not square then
         print("[HeadForTheHills] no open ground found for the generator")
         return
@@ -340,7 +546,10 @@ local function spawnGenerator(playerObj, opts)
     local generator = IsoGenerator.new(item, getWorld():getCell(), square)
     if not generator then return end
 
-    if running then fuelAndStart(generator) end
+    if running then
+        fuelAndStart(generator)
+        startWhenSettled(generator)
+    end
 
     pcall(function() generator:transmitCompleteItemToClients() end)
 end
@@ -352,6 +561,14 @@ local function spawnWell(playerObj, opts)
     if hasWellNearby(centre) then return end
 
     local square = findSquare(centre, OBJECT_MIN_RADIUS, OBJECT_SEARCH_RADIUS, isObjectSpot)
+    if not square then
+        square = findSquare(centre, OBJECT_MIN_RADIUS, OBJECT_SEARCH_RADIUS,
+                            isFallbackObjectSpot)
+        if square then
+            print("[HeadForTheHills] no bare ground clear of the building for the "
+                  .. "well; using " .. square:getX() .. "," .. square:getY())
+        end
+    end
     if not square then
         print("[HeadForTheHills] no open ground found for the well")
         return
@@ -387,6 +604,12 @@ local function spawnWell(playerObj, opts)
         square:AddSpecialObject(well)
         well:transmitCompleteItemToClients()
     end)
+
+    if ok then
+        -- Remembered so the generator, which searches the same rings from the
+        -- same centre, does not take the square right beside it.
+        wellSquare = { x = square:getX(), y = square:getY() }
+    end
 
     if not ok then
         -- Guarded because the script lookup is the one step not yet exercised
@@ -424,6 +647,10 @@ end
 local function onNewGame(playerObj, square)
     local opts = options()
     if not opts or not playerObj then return end
+
+    -- Per-spawn state, cleared rather than inherited from a previous character
+    -- in the same session.
+    wellSquare = nil
 
     applySeason(opts)
     giveStartingEquipment(playerObj, opts)

@@ -12,24 +12,9 @@ the PZTestPilot mod enabled.
     python tests/api_checks.py
 """
 
-import os
 import sys
-from pathlib import Path
 
-# Sibling checkout by default; override when pz-test-pilot lives elsewhere.
-TEST_PILOT_ROOT = Path(
-    os.environ.get("PZ_TEST_PILOT", Path(__file__).resolve().parents[2] / "pz-test-pilot")
-)
-TEST_PILOT_SCRIPTS = TEST_PILOT_ROOT / "scripts"
-if not TEST_PILOT_SCRIPTS.is_dir():
-    sys.exit(
-        f"pz-test-pilot not found at {TEST_PILOT_ROOT}\n"
-        "Set PZ_TEST_PILOT to its checkout path."
-    )
-sys.path.insert(0, str(TEST_PILOT_SCRIPTS))
-
-from config import load as load_config          # noqa: E402
-from _ipc import send_command, CommandTimeout, HarnessDead  # noqa: E402
+from _pilot import load, run_lua, CommandTimeout, HarnessDead, HarnessError
 
 
 # Each check returns a single scalar (string/number) - complex tables do not
@@ -160,30 +145,28 @@ CHECKS = [
 
 
 def main():
-    cfg = load_config(TEST_PILOT_SCRIPTS.parent / "pz-test-pilot.json")
+    cfg = load()
 
     passed, failed = 0, 0
     for name, description, code in CHECKS:
-        chunk = " ".join(line.strip() for line in code.strip().splitlines())
         try:
-            result = send_command(cfg, "run_lua", {"code": chunk})
+            value = run_lua(cfg, code)
         except CommandTimeout:
             print(f"[TIMEOUT] {name}: {description}")
             print("          Is PZ running with a save loaded?")
+            failed += 1
+            continue
+        except HarnessError as exc:
+            print(f"[FAIL]    {name}: {description}")
+            print(f"          {exc}")
             failed += 1
             continue
         except HarnessDead as exc:
             print(f"[DEAD]    harness not responding: {exc}")
             return 2
 
-        if result.get("status") == "ok":
-            value = result.get("result", result)
-            print(f"[OK]      {name}: {value}")
-            passed += 1
-        else:
-            print(f"[FAIL]    {name}: {description}")
-            print(f"          {result.get('error', result)}")
-            failed += 1
+        print(f"[OK]      {name}: {value}")
+        passed += 1
 
     print(f"\n{passed} passed, {failed} failed")
     return 0 if failed == 0 else 1

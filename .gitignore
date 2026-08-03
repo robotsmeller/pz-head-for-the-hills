@@ -4,3 +4,4 @@ Thumbs.db
 .DS_Store
 __pycache__/
 *.pyc
+.claude/afk-log.md

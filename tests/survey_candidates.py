@@ -23,24 +23,13 @@ heartbeat counts in-game ticks and the clock stops. Keep the game window in the
 foreground, or read Zomboid/Lua/TestPilot/result.txt directly.
 """
 
-import os
 import sys
 import time
-from pathlib import Path
 
-TEST_PILOT_ROOT = Path(
-    os.environ.get("PZ_TEST_PILOT", Path(__file__).resolve().parents[2] / "pz-test-pilot")
+from _pilot import (
+    load, send_command, run_lua, parse,
+    CommandTimeout, HarnessDead, HarnessError,
 )
-TEST_PILOT_SCRIPTS = TEST_PILOT_ROOT / "scripts"
-if not TEST_PILOT_SCRIPTS.is_dir():
-    sys.exit(
-        f"pz-test-pilot not found at {TEST_PILOT_ROOT}\n"
-        "Set PZ_TEST_PILOT to its checkout path."
-    )
-sys.path.insert(0, str(TEST_PILOT_SCRIPTS))
-
-from config import load as load_config          # noqa: E402
-from _ipc import send_command, CommandTimeout, HarnessDead  # noqa: E402
 
 
 # Issue #1 shortlist, session 2. #4 is the only known existing-well test case.
@@ -164,35 +153,6 @@ return table.concat(out, " | ")
 """
 
 
-def flatten(lua):
-    """Collapse a Lua chunk to one line for the IPC hop.
-
-    A `--` line comment would swallow everything after it once the newlines are
-    gone, and the result still compiles, so the failure is silent: the chunk
-    returns nil for every candidate and looks like an empty map rather than a
-    bug. Use `--[[ ]]` block comments in SURVEY_LUA instead.
-    """
-    flat = " ".join(line.strip() for line in lua.strip().splitlines())
-    if "--" in flat.replace("--[[", "").replace("]]", ""):
-        raise AssertionError(
-            "SURVEY_LUA contains a '--' line comment, which flattening turns "
-            "into a silent truncation. Use --[[ ]] block comments."
-        )
-    return flat
-
-
-def parse(result_text):
-    """Turn 'k=v | k=v' into a dict; pass anything else through as a marker."""
-    if "=" not in result_text:
-        return {"_raw": result_text}
-    fields = {}
-    for chunk in result_text.split("|"):
-        if "=" in chunk:
-            k, v = chunk.strip().split("=", 1)
-            fields[k] = v
-    return fields
-
-
 def verdict(f):
     """Fast-eliminate on the criteria from issue #1, in eliminating order."""
     if f.get("_raw"):
@@ -214,7 +174,7 @@ def verdict(f):
 
 
 def main():
-    cfg = load_config(TEST_PILOT_SCRIPTS.parent / "pz-test-pilot.json")
+    cfg = load()
     rows = []
 
     for num, x, y, note in CANDIDATES:
@@ -227,22 +187,24 @@ def main():
 
         time.sleep(CELL_LOAD_SECONDS)
 
-        chunk = flatten(SURVEY_LUA % (x, y))
         try:
-            result = send_command(cfg, "run_lua", {"code": chunk})
+            answer = run_lua(cfg, SURVEY_LUA % (x, y))
         except CommandTimeout:
             print(f"[TIMEOUT] {label}")
+            continue
+        except HarnessError as exc:
+            print(f"[ERROR] {label}: {exc}")
             continue
         except HarnessDead as exc:
             print(f"[DEAD]  harness not responding: {exc}")
             print("        If PZ is alive, this is the tick-heartbeat false positive.")
             return 2
 
-        fields = parse(str(result.get("result", result)))
+        fields = parse(answer)
         call, why = verdict(fields)
         rows.append((num, x, y, call, why, fields, note))
         print(f"[{call:4}] {label:18} {why}")
-        print(f"        {result.get('result')}")
+        print(f"        {answer}")
 
     keep = [r for r in rows if r[3] == "KEEP"]
     print(f"\n{len(keep)} of {len(rows)} candidates survive automated screening.")
