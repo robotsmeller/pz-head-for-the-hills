@@ -2,7 +2,7 @@
 project: pz-head-for-the-hills
 session: 2
 last_updated: 2026-08-03
-continue_with: "Pick 2-3 real cabin coordinates off map.projectzomboid.com, then build the spawnregions.lua + spawnpoints.lua pair for the Remote Cabin region."
+continue_with: "Pick 2-3 real cabin coordinates off map.projectzomboid.com (issue #1), then build the spawnregions.lua + spawnpoints.lua pair for the Remote Cabin region (issue #2)."
 blockers: "None."
 
 tech:
@@ -17,33 +17,37 @@ tech:
 
 ## What exists
 
-- Repo scaffold only: `mod/mod.info` + `mod/42/mod.info` (identical content, both required — see CLAUDE.md), empty `mod/42/media/lua/{shared,client,server}` and `mod/42/media/scripts`, `.claude/` (context.md, settings.json, secrets/pii hooks, development-workflow rules), README, MIT LICENSE.
+- Repo scaffold only: `mod/mod.info` + `mod/42/mod.info` (identical content, both required, see CLAUDE.md), empty `mod/42/media/lua/{shared,client,server}` and `mod/42/media/scripts`, `.claude/` (context.md, settings.json, secrets/pii hooks, development-workflow rules), README, MIT LICENSE.
 - No gameplay content yet: no spawn region, no starting kit, no vehicle spawn, no zombie-buffer logic.
+- 5 open tracking issues (#1-#5) covering the pending work below.
 
 ## What is decided
 
-- A start-scenario mod, not a mechanics overhaul: custom spawn region (2-3 hand-picked existing rural cabins, randomized across them) + starting kit (trait/occupation-based) + a nearby starting vehicle + a no-zombie buffer for the immediate area around the cabin, with a real drivable stretch to an existing town.
-- Reuse an existing map building for the cabin rather than hand-building one in TileZed (locked in session 1 - faster, no mapping-tool learning curve, custom-built cabin stays an option for a v2).
+- A start-scenario mod, not a mechanics overhaul: custom spawn region (2-3 hand-picked existing rural cabins, randomized across them) plus starting kit (trait/occupation-based) plus a nearby starting vehicle plus a no-zombie buffer for the immediate area around the cabin, with a real drivable stretch to an existing town.
+- Reuse an existing map building for the cabin rather than hand-building one in TileZed (locked in session 1, faster, no mapping-tool learning curve, custom-built cabin stays an option for a v2).
 - One mod, not split across several. `pz-` naming convention. Public repo under the `robotsmeller` GitHub org (where the rest of this account's PZ tooling lives).
+- All public-facing copy (README, mod description, issue bodies) runs through `/avoid-ai-writing` before it ships. Standing rule across projects, not specific to this one.
 
 ## What is pending
 
-- Pick the actual 2-3 cabin coordinates (map.projectzomboid.com for Cell/Rel values).
-- Decide the profession-key strategy for spawn randomization: vanilla `spawnpoints.lua` keys point lists **by profession**, not as one flat randomized list, so either every profession key gets mapped to the same 2-3 points, or the scenario defines one dedicated occupation that owns them.
-- Starting kit contents.
-- Vehicle choice + spawn-near-player logic.
-- Zombie-buffer approach: lean on already-sparse vanilla density at the chosen spot vs. porting Player Made Safe Zone-style active suppression.
+- **#1** Pick the actual 2-3 cabin coordinates (map.projectzomboid.com for Cell/Rel values).
+- **#2** Build spawnregions.lua + spawnpoints.lua for the Remote Cabin region. Vanilla `spawnpoints.lua` keys point lists by profession, not one flat randomized list, so either every profession key gets mapped to the same 2-3 points, or the scenario defines one dedicated occupation that owns them. Depends on #1.
+- **#3** Starting kit contents (trait/occupation).
+- **#4** Vehicle choice and spawn-near-player logic.
+- **#5** Zombie-buffer approach: lean on already-sparse vanilla density at the chosen spot vs. porting Player Made Safe Zone-style active suppression. Decide after #1.
 
 ## Recent sessions
 
 ### Session 1 (2026-08-03): Research + scaffold
-Researched B42 scenario feasibility: spawn regions, zombie density heatmaps, starting kits, and vehicle-start mods are all achievable as a single mod with no custom TileZed map required. Surveyed sibling PZ projects in `c:\xampp\htdocs` for reusable tooling and hard-won B42 facts, pulled the real vanilla `SpawnRegions.lua` and a town `spawnpoints.lua` off the local PZ 42.20.0 install to confirm the profession-keyed structure firsthand. Named the project "Head for the Hills!" and scaffolded the repo.
+Researched B42 scenario feasibility: spawn regions, zombie density heatmaps, starting kits, and vehicle-start mods are all achievable as a single mod with no custom TileZed map required. Surveyed sibling PZ projects in `c:\xampp\htdocs` for reusable tooling and hard-won B42 facts, pulled the real vanilla `SpawnRegions.lua` and a town `spawnpoints.lua` off the local PZ 42.20.0 install to confirm the profession-keyed structure firsthand.
+
+Named the project "Head for the Hills!", scaffolded the repo, and pushed it to `robotsmeller/pz-head-for-the-hills`. Filed issues #1-#5 for the remaining scenario work. Ran an `/avoid-ai-writing` pass on the README, mod.info description, and issue bodies; found the copy already clean apart from a couple of small tightenings, and caught two stray em dashes in this file and the dev-workflow rules that violated the user's standing no-em-dash rule.
 
 ## To Resume
 
 Paste this into a fresh window:
 
-> Continuing Head for the Hills (PZ B42.20 start-scenario mod) at `c:\xampp\htdocs\pz-head-for-the-hills`, session 2. Scaffold is done and pushed to `robotsmeller/pz-head-for-the-hills`. Next: pick 2-3 real cabin coordinates off map.projectzomboid.com, then build the spawnregions.lua/spawnpoints.lua pair for the "Remote Cabin" region.
+> Continuing Head for the Hills (PZ B42.20 start-scenario mod) at `c:\xampp\htdocs\pz-head-for-the-hills`, session 2. Scaffold is done, pushed to `robotsmeller/pz-head-for-the-hills`, 5 tracking issues open. Next: pick 2-3 real cabin coordinates off map.projectzomboid.com (#1), then build the spawnregions.lua/spawnpoints.lua pair for the "Remote Cabin" region (#2).
 
 ## Reference
 
@@ -51,4 +55,4 @@ Paste this into a fresh window:
 |------|---------|
 | `CLAUDE.md` | Project rules, hard-won B42 facts, related sibling tooling |
 | `.claude/rules/development-workflow.md` | Git, commit, workflow rules |
-| `mod/` | The actual PZ mod (root `mod.info` + `42/`) — this is what gets copied/symlinked into `Zomboid/mods/` |
+| `mod/` | The actual PZ mod (root `mod.info` + `42/`), this is what gets copied/symlinked into `Zomboid/mods/` |

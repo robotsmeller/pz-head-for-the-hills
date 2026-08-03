@@ -2,7 +2,7 @@
 
 A start-scenario mod for Project Zomboid Build 42. Your survivor saw it coming and got out ahead of the outbreak, up to a remote cabin. You start there: stocked with basic supplies, a vehicle nearby, and no zombies for a stretch around the property. The nearest town is still a drive away if you want to push your luck.
 
-**Status: early scaffold. No gameplay content yet.**
+Status: early scaffold, no gameplay content yet.
 
 ## Planned
 

@@ -52,7 +52,7 @@ No emojis. No "Generated with Claude Code" footer.
 
 - [ ] No credentials or PII in changed files
 - [ ] Changes match the task scope
-- [ ] `mod.info` present and identical in both `mod/` and `mod/42/` if either changed (B42 silently rejects a mod missing the versioned copy — see CLAUDE.md)
+- [ ] `mod.info` present and identical in both `mod/` and `mod/42/` if either changed (B42 silently rejects a mod missing the versioned copy, see CLAUDE.md)
 - [ ] Tested in a live PZ instance where applicable
 
 ## Before Every Push
@@ -70,7 +70,7 @@ gh issue create --title "Title" --body "Description" --label "enhancement"
 
 ## Session Handoff
 
-Use the global `/handoff` skill. It folds session state into `.claude/context.md` (the single handoff file for this repo — no separate `HANDOFF.md`). Don't hand-roll a handoff outside that skill.
+Use the global `/handoff` skill. It folds session state into `.claude/context.md` (the single handoff file for this repo, no separate `HANDOFF.md`). Don't hand-roll a handoff outside that skill.
 
 ---
 
