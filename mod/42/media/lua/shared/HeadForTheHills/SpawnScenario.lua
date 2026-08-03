@@ -309,7 +309,14 @@ local function spawnGenerator(playerObj, opts)
     -- promised a running one. Start theirs rather than adding a second.
     local existing = findGeneratorNearby(centre)
     if existing then
-        if running then fuelAndStart(existing) end
+        if running then
+            fuelAndStart(existing)
+            -- MP: clients already know this generator exists, but its fuel and
+            -- running state just changed under them and nothing else will push
+            -- that across. The freshly spawned path below transmits for the
+            -- same reason.
+            pcall(function() existing:transmitCompleteItemToClients() end)
+        end
         return
     end
 
