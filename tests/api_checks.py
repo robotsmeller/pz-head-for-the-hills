@@ -141,6 +141,32 @@ CHECKS = [
         return "value=" .. tostring(SandboxVars.ZombieLore.PlayerSpawnZombieRemoval)
         """,
     ),
+    (
+        "spawn_regions_event",
+        "Events.OnSpawnRegionsLoaded binds (the hook #2 needs)",
+        """
+        local e = Events and Events.OnSpawnRegionsLoaded
+        if not e then return "NO EVENT - Events.OnSpawnRegionsLoaded is nil" end
+        return "add=" .. type(e.Add) .. " remove=" .. type(e.Remove)
+        """,
+    ),
+    (
+        "spawn_regions_shape",
+        "getSpawnRegions() returns name/points regions we can append to",
+        """
+        if not SpawnRegionMgr then return "NO SpawnRegionMgr" end
+        local ok, regions = pcall(function() return SpawnRegionMgr.getSpawnRegions() end)
+        if not ok then return "pcall failed: " .. tostring(regions) end
+        if not regions then return "nil regions" end
+        local count, named, withPoints = 0, 0, 0
+        for _, region in ipairs(regions) do
+            count = count + 1
+            if region.name then named = named + 1 end
+            if region.points then withPoints = withPoints + 1 end
+        end
+        return "regions=" .. count .. " named=" .. named .. " withPoints=" .. withPoints
+        """,
+    ),
 ]
 
 
