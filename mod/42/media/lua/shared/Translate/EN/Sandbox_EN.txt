@@ -2,6 +2,9 @@ Sandbox_EN = {
 
 	Sandbox_HeadForTheHills = "Head for the Hills!",
 
+	Sandbox_HeadForTheHills_CustomSpawnPoint = "Custom Start Coordinate",
+	Sandbox_HeadForTheHills_CustomSpawnPoint_tooltip = "Type a map coordinate as X,Y to wake up there instead of at one of the twelve cabins. Leave it empty for a random cabin. Only applies when you pick Remote Cabin as your starting location. A spot you choose yourself gets none of the checking the twelve had, so the vehicle, well and generator may land in odd places or not fit at all. A spot in water moves you to the nearest dry ground.",
+
 	Sandbox_HeadForTheHills_ZombieFreeRadius = "Zombie-Free Radius (tiles)",
 	Sandbox_HeadForTheHills_ZombieFreeRadius_tooltip = "How many tiles around the starting cabin stay clear of zombies. Set to 0 to let normal zombie density apply right up to the property.",
 

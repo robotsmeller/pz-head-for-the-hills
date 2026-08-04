@@ -111,9 +111,18 @@ def main():
             print(f"  - {problem}")
         return 1
 
-    if num(fields, "unemployedPoints") != EXPECTED_CABINS:
+    points = num(fields, "unemployedPoints")
+    if points == 1:
+        # #12 lets a sandbox coordinate replace the twelve with a single point.
+        # That swap happens on the menu screen, so finding it here means a
+        # character was made with one set earlier in this session. Reporting it
+        # beats failing on a count that is correct for what the player chose.
+        print("\n  NOTE: the region holds one point, so a custom start "
+              "coordinate is active.\n        The cabin-count check does not "
+              "apply. See tests/verify_custom_spawn.py.")
+    elif points != EXPECTED_CABINS:
         problems.append(
-            f"the region carries {num(fields, 'unemployedPoints'):.0f} cabins, "
+            f"the region carries {points:.0f} cabins, "
             f"expected {EXPECTED_CABINS}")
     if fields.get("missingKeys") != "none":
         problems.append(

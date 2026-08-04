@@ -94,6 +94,78 @@ local function buildPoints()
     return points
 end
 
+-- ----------------------------------------------- custom spawn point (#12) ---
+--
+-- The table this file inserts is the same object MapSpawnSelect freezes at
+-- clickNext:644, and CharacterCreationProfession.initWorld:1086 reads that exact
+-- object back at world creation before taking .points[profession] at 1097. So
+-- overwriting the points at any moment before world creation redirects the
+-- spawn, with no second mechanism needed.
+--
+-- The client hook does it from the sandbox screen, because PLAY there is the
+-- first moment SandboxVars exists (SandboxOptions.lua:972 calls setSandboxVars,
+-- which runs options:toLua()). An earlier read gets the option's default, which
+-- is what made the first design for this feature look impossible.
+--
+-- The parser lives here rather than in the client hook so run_lua can exercise
+-- it in a loaded world, without reaching the main menu.
+
+local function trim(text)
+    return (string.gsub(text or "", "^%s*(.-)%s*$", "%1"))
+end
+
+--- Parse "x,y" into a spawn point, or nil plus a short reason.
+--- Accepts a comma, a semicolon or plain whitespace between the two numbers,
+--- because a coordinate copied off the map site arrives in all three shapes.
+--- posZ is forced to 0: every cabin in this mod is at ground level, and a
+--- z value typed by hand is a way to spawn inside terrain.
+function HFTH_SpawnRegion.parsePoint(text)
+    text = trim(text)
+    if text == "" then return nil, "empty" end
+
+    local x, y = string.match(text, "^(%-?%d+)%s*[,;%s]%s*(%-?%d+)$")
+    if not x then return nil, "format" end
+
+    x, y = tonumber(x), tonumber(y)
+    if x < 0 or y < 0 then return nil, "negative" end
+
+    -- No bounds check beyond this. There is no metagrid at menu time to ask how
+    -- big the world is, and MoreMapsB42 moves the edges anyway, so a made-up
+    -- maximum would reject legitimate coordinates on exactly the installs this
+    -- mod is built for. A wrong-but-plausible number lands somewhere empty and
+    -- the player can see that; a rejected valid one just looks broken.
+    return { posX = x, posY = y, posZ = 0 }
+end
+
+--- Point every profession key at one list of spawn points.
+local function pointEveryProfessionAt(points, list)
+    for _, key in ipairs(professionKeys()) do
+        points[key] = list
+    end
+end
+
+--- Send the region to a single custom point, or back to the twelve cabins.
+---
+--- Called on every pass rather than only when a point is set. The region table
+--- is long-lived and the screen can be backed out of and re-entered, so a
+--- coordinate typed once and then cleared would otherwise stay live in the
+--- frozen table and quietly override the twelve on a later character. That is
+--- the failure the pre-flight review described as "the kind of bug that shows
+--- up once, months later, and looks like the mod is haunted".
+function HFTH_SpawnRegion.setCustomPoint(region, point)
+    if not region or not region.points then return false end
+    pointEveryProfessionAt(region.points, point and { point } or CABINS)
+    return true
+end
+
+--- True when the region is currently pointed at a single custom spot.
+function HFTH_SpawnRegion.hasCustomPoint(region)
+    local points = region and region.points and region.points.unemployed
+    return points ~= nil and #points == 1 and points ~= CABINS
+end
+
+-- --------------------------------------------------------------------------
+
 --- True when `regions` already holds an entry under this name.
 local function hasRegion(regions, name)
     for _, region in ipairs(regions) do

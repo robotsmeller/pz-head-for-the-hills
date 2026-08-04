@@ -1,5 +1,11 @@
 VERSION = 1,
 
+option HeadForTheHills.CustomSpawnPoint
+{
+	type = string, default = ,
+	page = HeadForTheHills, translation = HeadForTheHills_CustomSpawnPoint,
+}
+
 option HeadForTheHills.ZombieFreeRadius
 {
 	type = integer, min = 0, max = 20, default = 5,

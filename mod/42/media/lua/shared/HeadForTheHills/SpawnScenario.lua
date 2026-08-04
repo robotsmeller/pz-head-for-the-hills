@@ -368,10 +368,9 @@ local function applyVehicleFuel(vehicle, percent)
     tank:setContainerContentAmount(capacity * (percent or 0) / 100)
 end
 
-local function spawnStartingVehicle(playerObj, opts)
+local function spawnStartingVehicle(playerObj, opts, centre)
     if not opts.SpawnVehicle then return end
 
-    local centre = playerObj:getCurrentSquare()
     -- Prefer real elbow room. Fall back once to a tighter spot, then give up
     -- entirely: a car spawned into geometry does not just look wrong, it comes
     -- back chunk-orphaned and vanishes on reload, which is worse for the player
@@ -517,10 +516,9 @@ local function hasWellNearby(centre)
     return findObjectNearby(centre, EXISTING_OBJECT_SCAN_RADIUS, isWaterSource) ~= nil
 end
 
-local function spawnGenerator(playerObj, opts)
+local function spawnGenerator(playerObj, opts, centre)
     if not opts.SpawnGenerator then return end
 
-    local centre = playerObj:getCurrentSquare()
     local running = opts.GeneratorFueledAndRunning and true or false
 
     -- The cabin may already have come with one. Vanilla map generators are
@@ -579,10 +577,9 @@ local function spawnGenerator(playerObj, opts)
     pcall(function() generator:transmitCompleteItemToClients() end)
 end
 
-local function spawnWell(playerObj, opts)
+local function spawnWell(playerObj, opts, centre)
     if not opts.SpawnWell then return end
 
-    local centre = playerObj:getCurrentSquare()
     if hasWellNearby(centre) then return end
 
     local square = findSquare(centre, OBJECT_MIN_RADIUS, OBJECT_SEARCH_RADIUS, isObjectSpot)
@@ -669,20 +666,133 @@ end
 
 -- ------------------------------------------------------------------- entry ---
 
-local function onNewGame(playerObj, square)
-    local opts = options()
-    if not opts or not playerObj then return end
+-- How far to look for dry land when a custom coordinate lands in water. Only
+-- squares that have streamed in can answer, and an unstreamed one reads as nil
+-- rather than as water, so searching wider than the loaded area buys nothing.
+local WATER_RESCUE_RADIUS = 60
 
+-- Ticks to wait before starting over, when the anchor could not be settled on
+-- the first pass. Ticks do not run during IsoWorld.init, so the first one is
+-- already past world creation.
+local RESTART_TICKS = 30
+
+--- Anywhere a person can stand that is not water. Deliberately looser than
+--- isOpenGround: this is not choosing a good spot for a well, it is getting
+--- someone out of a lake, and any floored square beats standing in one.
+local function isDryLand(square)
+    return square:getFloor() ~= nil and not isWaterSquare(square)
+end
+
+local restartPending = nil
+local restartSpawn
+
+--- The square the whole start gets built around.
+---
+--- Everything downstream takes this as an argument instead of asking the player
+--- where they are, because those are two different questions. A player's
+--- coordinates update the instant teleportTo is called, but getCurrentSquare()
+--- takes about a second to follow (measured session 6). A placement pass that
+--- re-reads the player mid-rescue therefore builds around the lake we just
+--- pulled them out of. Deciding the anchor once, here, removes that whole class
+--- of bug rather than timing around it.
+---
+--- Returns the square to build on, or nil when the start has to begin again
+--- because nothing usable has loaded yet.
+local function anchorSquare(playerObj, square)
+    local centre = playerObj:getCurrentSquare() or square
+
+    -- Not knowing where the player is is not the same as knowing they are in
+    -- water, so this waits rather than rescuing someone who never needed it.
+    if not centre then
+        print("[HeadForTheHills] spawn square has not streamed in yet; starting over shortly")
+        return nil
+    end
+
+    if not isWaterSquare(centre) then return centre end
+
+    -- Only reachable through a custom coordinate, since all twelve cabins are
+    -- on dry land. There is no "leave them there" branch on purpose.
+    local dry = findSquare(centre, 1, WATER_RESCUE_RADIUS, isDryLand)
+    if dry then
+        print(string.format(
+            "[HeadForTheHills] start coordinate is water; moved to dry ground at %d,%d",
+            dry:getX(), dry:getY()))
+        playerObj:teleportTo(dry:getX(), dry:getY(), dry:getZ())
+        return dry
+    end
+
+    -- No dry square in anything that has loaded, so the coordinate sits deep in
+    -- open water. Fall back to a cabin that is known good. Its chunk is not
+    -- loaded yet, so nothing can be placed on this pass: teleportTo streams it
+    -- in and the start runs again once the square exists.
+    local cabins = HFTH_SpawnRegion and HFTH_SpawnRegion.CABINS
+    local cabin = cabins and cabins[ZombRand(#cabins) + 1]
+    if not cabin then
+        print("[HeadForTheHills] start coordinate is water and the cabin list is missing; cannot rescue")
+        return centre
+    end
+
+    print(string.format(
+        "[HeadForTheHills] start coordinate is open water with no dry ground within %d tiles; using a cabin at %d,%d",
+        WATER_RESCUE_RADIUS, cabin.posX, cabin.posY))
+    playerObj:teleportTo(cabin.posX, cabin.posY, cabin.posZ or 0)
+    return nil
+end
+
+local function runSpawn(playerObj, opts, centre)
     -- Per-spawn state, cleared rather than inherited from a previous character
     -- in the same session.
     wellSquare = nil
 
     applySeason(opts)
     giveStartingEquipment(playerObj, opts)
-    spawnStartingVehicle(playerObj, opts)
-    spawnWell(playerObj, opts)
-    spawnGenerator(playerObj, opts)
+    spawnStartingVehicle(playerObj, opts, centre)
+    spawnWell(playerObj, opts, centre)
+    spawnGenerator(playerObj, opts, centre)
     clearZombies(playerObj, opts)
+end
+
+local function onNewGame(playerObj, square)
+    local opts = options()
+    if not opts or not playerObj then return end
+
+    local centre = anchorSquare(playerObj, square)
+    if not centre then
+        restartPending = {
+            playerObj = playerObj, opts = opts, ticks = RESTART_TICKS,
+        }
+        Events.OnTick.Add(restartSpawn)
+        return
+    end
+
+    runSpawn(playerObj, opts, centre)
+end
+
+--- Second attempt, once the square the player was moved to actually exists.
+restartSpawn = function()
+    if not restartPending then
+        Events.OnTick.Remove(restartSpawn)
+        return
+    end
+
+    restartPending.ticks = restartPending.ticks - 1
+    if restartPending.ticks > 0 then return end
+
+    local job = restartPending
+    restartPending = nil
+    Events.OnTick.Remove(restartSpawn)
+
+    local centre = job.playerObj:getCurrentSquare()
+    if not centre then
+        print("[HeadForTheHills] square still not loaded on the second attempt; nothing placed")
+        return
+    end
+    if isWaterSquare(centre) then
+        print("[HeadForTheHills] still standing in water on the second attempt; nothing placed")
+        return
+    end
+
+    runSpawn(job.playerObj, job.opts, centre)
 end
 
 Events.OnNewGame.Add(onNewGame)
