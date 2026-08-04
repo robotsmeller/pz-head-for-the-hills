@@ -134,14 +134,6 @@ CHECKS = [
         """,
     ),
     (
-        "vanilla_spawn_removal_var",
-        "Vanilla ZombieLore.PlayerSpawnZombieRemoval is readable/overridable",
-        """
-        if not SandboxVars or not SandboxVars.ZombieLore then return "NO ZombieLore" end
-        return "value=" .. tostring(SandboxVars.ZombieLore.PlayerSpawnZombieRemoval)
-        """,
-    ),
-    (
         "spawn_regions_event",
         "Events.OnSpawnRegionsLoaded binds (the hook #2 needs)",
         """

@@ -85,7 +85,6 @@ sv.SpawnVehicle = false
 sv.SpawnWell = false
 sv.SpawnGenerator = false
 sv.GeneratorFueledAndRunning = false
-sv.ZombieFreeRadius = 0
 sv.Season = 0
 sv.SpawnStartingEquipment = true
 sv.StartingEquipmentList = "%s"

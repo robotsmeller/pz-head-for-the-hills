@@ -1,13 +1,15 @@
 """
-Head for the Hills! - how far the zombie-free buffer can actually reach (#13).
+Head for the Hills! - how far the loaded world reaches from the player.
 
-ZombieFreeRadius offers up to 100 tiles, but clearZombies() can only remove
-what getCell():getObjectListForLua() is holding, and the cell holds the loaded
-area. So the option's real ceiling is however far that reaches, and no choice
-of API moves it - a square that has not streamed in reads as nil to every one
-of them. (Vanilla's own hint that unloaded zombies are somewhere else entirely
-is Challenge1.lua:135, on VirtualZombieManager. That is a comment, not a
-measurement, which is what this script is for.)
+Every scan this mod runs is centred on the player and bounded by the same
+thing: a square that has not streamed in reads as nil, and no choice of API
+moves that. WATER_RESCUE_RADIUS, the well and generator searches and anything
+added later all sit under this ceiling, so it is worth knowing what it is
+rather than picking a radius that feels safe.
+
+Written for #13, which asked how far the zombie-free buffer really cleared.
+The answer was 72 tiles in a settled world and nothing at all at OnNewGame,
+and that measurement is why the buffer no longer exists.
 
 Two measurements, one command, nothing written:
 
@@ -185,7 +187,7 @@ def main():
 
     if cap is None:
         return 1
-    print(f"\n  ZombieFreeRadius should offer at most {cap}.")
+    print(f"\n  Any scan centred on the player is bounded by {cap} tiles.")
     return 0
 
 

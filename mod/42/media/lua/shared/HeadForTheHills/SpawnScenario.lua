@@ -2,7 +2,7 @@
 --
 -- Applies the sandbox settings when a new character is created: starting
 -- vehicle, starting equipment, a well and generator on the property if the
--- cabin lacks them, the zombie-free buffer, and the starting season.
+-- cabin lacks them, and the starting season.
 --
 -- MULTIPLAYER: this file guards on `isClient()` and lives in shared/, the same
 -- shape vanilla uses for server/Map/MapObjects/MOGenerator.lua and
@@ -641,116 +641,22 @@ local function spawnWell(playerObj, opts, centre)
     end
 end
 
--- ------------------------------------------------------------ zombie buffer ---
-
--- Sweeps after the first, and how many ticks apart.
+-- The mod used to clear its own zombie buffer here, on a ZombieFreeRadius
+-- sandbox option. It is gone on purpose, and the reasoning is worth keeping so
+-- nobody rebuilds it:
 --
--- One sweep at OnNewGame cannot keep the option's promise, because most of the
--- world it is supposed to clear does not exist yet: a scan run that early reads
--- unloaded squares as empty rather than as unloaded (session 6). Every later
--- sweep therefore reaches further than the one before it, at no cost beyond a
--- walk over the cell's object list.
+-- * The number that justified it was measured at a town coordinate, and this
+--   mod starts people at remote cabins. It was solving for somewhere it never
+--   sends anyone.
+-- * The engine already thins zombies around a spawn, through the vanilla
+--   ZombieLore.PlayerSpawnZombieRemoval setting, which is now left at whatever
+--   the player chose rather than overridden.
+-- * A cabin the survivor has been holed up in for weeks having a quiet treeline
+--   is the fiction; vanilla's own removal covers the doorstep, and the twelve
+--   cabins are remote enough that little else is nearby to begin with.
 --
--- Eight rounds of 30 ticks is about four seconds at 60fps, comfortably past the
--- three the tests already wait for a cell to stream (CELL_LOAD_SECONDS). Below
--- 60fps both the sweeps and the streaming slow down together. Ticks do not run
--- during IsoWorld.init, so the first one is already past world creation.
-local SWEEP_ROUNDS = 8
-local SWEEP_TICKS = 30
-
-local pendingSweep = nil
-local sweepAgain
-
---- Remove every loaded zombie within radius of (cx, cy).
----
---- Returns how many went and how far out the furthest one was. That second
---- number is the only view we get of how much of the buffer had actually
---- loaded, since a zombie in an unstreamed chunk and no zombie at all look
---- identical from here.
----
---- Backwards, because removing from the list vanilla hands back mutates it.
---- Same loop as vanilla's own DebugContextMenu.OnRemoveAllZombies.
-local function sweep(cx, cy, radius)
-    local objects = getCell():getObjectListForLua()
-    local removed, furthest = 0, 0
-    for i = objects:size(), 1, -1 do
-        local object = objects:get(i - 1)
-        if instanceof(object, "IsoZombie") then
-            local dist = IsoUtils.DistanceTo(cx, cy, object:getX(), object:getY())
-            if dist < radius then
-                object:removeFromWorld()
-                object:removeFromSquare()
-                removed = removed + 1
-                if dist > furthest then furthest = dist end
-            end
-        end
-    end
-    return removed, furthest
-end
-
---- Sweep the same circle again, now that more of it exists.
-sweepAgain = function()
-    if not pendingSweep then
-        Events.OnTick.Remove(sweepAgain)
-        return
-    end
-
-    pendingSweep.ticks = pendingSweep.ticks - 1
-    if pendingSweep.ticks > 0 then return end
-
-    local job = pendingSweep
-    local removed, furthest = sweep(job.cx, job.cy, job.radius)
-    -- Silent when it finds nothing, so a cabin start with no zombies for miles
-    -- does not write eight lines saying so.
-    if removed > 0 then
-        print(string.format(
-            "[HeadForTheHills] zombie buffer sweep %d cleared %d more, furthest %.0f tiles",
-            job.round, removed, furthest))
-    end
-
-    job.round = job.round + 1
-    if job.round > SWEEP_ROUNDS then
-        pendingSweep = nil
-        Events.OnTick.Remove(sweepAgain)
-    else
-        job.ticks = SWEEP_TICKS
-    end
-end
-
-local function clearZombies(opts, centre)
-    local radius = opts.ZombieFreeRadius
-    if not radius or radius <= 0 then return end
-
-    -- Vanilla's own spawn-area removal is a coarse 4-value enum with no radius.
-    -- Switching it to "anywhere" hands this mod sole control instead of leaving
-    -- two systems clearing the same area to different rules.
-    if SandboxVars.ZombieLore then
-        SandboxVars.ZombieLore.PlayerSpawnZombieRemoval = 4
-    end
-
-    -- Measured from the anchor square, like every other placement here, rather
-    -- than from the player. The two are the same square in the common case, but
-    -- after a water rescue the player's own position is the one that lags, so
-    -- asking them would clear a circle around the lake they were pulled out of.
-    -- +0.5 puts the centre in the middle of the tile, which is where vanilla
-    -- measures a square-to-character distance from (ISScytheGrassCursor.lua:122).
-    local cx, cy = centre:getX() + 0.5, centre:getY() + 0.5
-
-    -- Deliberately not clamped to the 72 the option now stops at. A save made
-    -- before that cap can still hold 90, and honouring it clears more than
-    -- clamping would. The cap is there to stop the slider promising a circle it
-    -- cannot fill in every direction, not to throw away zombies we can reach.
-    local removed, furthest = sweep(cx, cy, radius)
-    print(string.format(
-        "[HeadForTheHills] zombie buffer %d tiles: cleared %d at the start, furthest %.0f tiles",
-        radius, removed, furthest))
-
-    if pendingSweep then Events.OnTick.Remove(sweepAgain) end
-    pendingSweep = {
-        cx = cx, cy = cy, radius = radius, round = 1, ticks = SWEEP_TICKS,
-    }
-    Events.OnTick.Add(sweepAgain)
-end
+-- Session 10 measured the ceiling any such buffer could have had: 72 tiles, and
+-- nothing at all at OnNewGame. See CLAUDE.md.
 
 -- ------------------------------------------------------------------- entry ---
 
@@ -891,7 +797,6 @@ local function runSpawn(playerObj, opts, centre)
     spawnStartingVehicle(playerObj, opts, centre)
     spawnWell(playerObj, opts, centre)
     spawnGenerator(playerObj, opts, centre)
-    clearZombies(opts, centre)
 end
 
 local function onNewGame(playerObj, square)

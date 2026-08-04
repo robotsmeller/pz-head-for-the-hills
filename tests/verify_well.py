@@ -75,7 +75,6 @@ if not sv then return "NOOPTIONS" end
 sv.SpawnVehicle = false
 sv.SpawnGenerator = false
 sv.SpawnStartingEquipment = false
-sv.ZombieFreeRadius = 0
 sv.Season = 0
 sv.SpawnWell = true
 return "armed | triggerEvent=" .. type(triggerEvent)
