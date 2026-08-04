@@ -98,10 +98,26 @@ local function buildingGap(s)
     return 99
 end
 
+--[[ Which placements were actually asked for. Without this the check cannot
+     tell "the option was off" from "the mod failed to place anything", and it
+     graded the second as a pass. ]]
+local sv = SandboxVars and SandboxVars.HeadForTheHills
+add("optWell", sv and sv.SpawnWell)
+add("optGen", sv and sv.SpawnGenerator)
+add("optVehicle", sv and sv.SpawnVehicle)
+
+--[[ A square that has not streamed in yet reads as nil, and an object standing
+     on it is invisible to this scan rather than absent. Measured live: a scan
+     run just after a fresh spawn reported no well, no generator and no vehicle,
+     and all three were found once the chunks had settled. Count the misses so
+     the run can refuse to grade instead of reporting a phantom failure. ]]
+local nilSquares = 0
+
 local WELL_SPRITES = { ["camping_01_16"] = true }
 local gen, well = nil, nil
 for dx = -R, R do for dy = -R, R do
     local s = getSquare(cx+dx, cy+dy, cz)
+    if not s then nilSquares = nilSquares + 1 end
     if s then
         local o = s:getObjects()
         for i = 0, o:size() - 1 do
@@ -183,6 +199,8 @@ else
     add("vehicle", "none")
 end
 
+add("nilSquares", nilSquares)
+
 if wellSq and genSq then
     add("wellGenGap", math.max(math.abs(wellSq:getX() - genSq:getX()),
                                math.abs(wellSq:getY() - genSq:getY())))
@@ -200,14 +218,22 @@ def check(fields):
                      "below is just the closest one and may belong to the map "
                      "rather than the mod")
 
-    for name, label, clearance in (
-        ("well", "well", BUILDING_CLEARANCE),
-        ("gen", "generator", BUILDING_CLEARANCE),
-        ("vehicle", "vehicle", VEHICLE_BUILDING_CLEARANCE),
+    for name, label, clearance, option in (
+        ("well", "well", BUILDING_CLEARANCE, "optWell"),
+        ("gen", "generator", BUILDING_CLEARANCE, "optGen"),
+        ("vehicle", "vehicle", VEHICLE_BUILDING_CLEARANCE, "optVehicle"),
     ):
         where = fields.get(name)
         if not where or where == "none":
-            notes.append(f"{label}: not present (option off, or placement skipped)")
+            # Absent is only acceptable when it was never asked for. This used
+            # to be a note either way, so a spawn that placed nothing at all
+            # came back PASS.
+            if boolean(fields, option) is True:
+                problems.append(
+                    f"{label}: the option is on but nothing was placed within "
+                    f"{SCAN_RADIUS} tiles")
+            else:
+                notes.append(f"{label}: not present, and its option is off")
             continue
 
         if boolean(fields, f"{name}Water") is True:
@@ -268,6 +294,17 @@ def main():
     print("\nPlacement:")
     for key, value in fields.items():
         print(f"  {key:20} {value}")
+
+    # Refuse to grade a half-loaded cell. Measured live: a scan run just after a
+    # fresh spawn found no well, no generator and no vehicle, and all three were
+    # sitting there once the chunks finished streaming.
+    missing = num(fields, "nilSquares")
+    if missing:
+        print(f"\nINCONCLUSIVE - {missing:.0f} squares in the scan area have "
+              "not streamed in yet.\n  Anything standing on them is invisible "
+              "to this scan rather than absent.\n  Stand still for a few "
+              "seconds and run it again.")
+        return 3
 
     problems, notes = check(fields)
     for note in notes:
