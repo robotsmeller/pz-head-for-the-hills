@@ -8,7 +8,7 @@ option HeadForTheHills.CustomSpawnPoint
 
 option HeadForTheHills.ZombieFreeRadius
 {
-	type = integer, min = 0, max = 100, default = 20,
+	type = integer, min = 0, max = 72, default = 20,
 	page = HeadForTheHills, translation = HeadForTheHills_ZombieFreeRadius,
 }
 
