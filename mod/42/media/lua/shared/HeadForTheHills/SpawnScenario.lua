@@ -818,6 +818,77 @@ local function spawnWell(playerObj, opts, centre, ctx)
     end
 end
 
+-- ---------------------------------------------------------------- cabin key ---
+
+-- How far to look for the cabin if the spawn square is not itself inside it.
+-- A start coordinate can land on the porch or a step outside the door, and the
+-- key is still obviously theirs there. Short on purpose: past this it stops
+-- being "the cabin they are in" and starts being somebody else's house.
+local KEY_BUILDING_RADIUS = 8
+
+--- The building the player woke up in, or the nearest one just outside.
+local function cabinBuilding(centre)
+    local building = centre:getBuilding()
+    if building then return building end
+
+    local square = findSquare(centre, 1, KEY_BUILDING_RADIUS, function(candidate)
+        return candidate:getBuilding() ~= nil
+    end)
+    return square and square:getBuilding() or nil
+end
+
+--- Hand over the key to the cabin. Not optional: waking up locked out of the
+--- building you have supposedly been living in is never the scenario.
+---
+--- This is vanilla's own four-step sequence from ClientCommands.lua:647,
+--- Commands.debugAction.getBuildingKey. keyNamerBuilding is what puts the
+--- address on the key rather than leaving a bare "Key" in the inventory.
+local function giveCabinKey(playerObj, centre)
+    local building = cabinBuilding(centre)
+    if not building then
+        -- Reachable through a custom start coordinate out in open country, and
+        -- through the water rescue, which lands on a bank rather than in a
+        -- house. There is no cabin, so there is no key to give.
+        print("[HeadForTheHills] no building at the spawn point; no cabin key issued")
+        return
+    end
+
+    local def = building.getDef and building:getDef()
+    local keyId = def and def.getKeyId and def:getKeyId()
+    if not keyId then
+        print("[HeadForTheHills] the cabin has no key id; no cabin key issued")
+        return
+    end
+
+    local inventory = playerObj:getInventory()
+    -- haveThisKeyId returns the Key item or nil, never a boolean, so this is a
+    -- truthy test and not a comparison against true. Comparing would always be
+    -- false and would hand out a second key on every re-fired spawn.
+    if inventory.haveThisKeyId and inventory:haveThisKeyId(keyId) then
+        print("[HeadForTheHills] already carrying the key to this cabin")
+        return
+    end
+
+    local ok, err = pcall(function()
+        local key = instanceItem("Base.Key1")
+        if not key then error("instanceItem returned nil for Base.Key1", 0) end
+        key:setKeyId(keyId)
+        -- Field-tested rather than assumed: this is a Java helper this mod has
+        -- not called before, and an unnamed key still unlocks the door, so a
+        -- missing namer should cost the label and not the key.
+        if ItemPickerJava and ItemPickerJava.keyNamerBuilding then
+            ItemPickerJava.keyNamerBuilding(key, centre)
+        end
+        inventory:AddItem(key)
+    end)
+
+    if ok then
+        print("[HeadForTheHills] cabin key issued, key id " .. tostring(keyId))
+    else
+        print("[HeadForTheHills] could not issue the cabin key: " .. tostring(err))
+    end
+end
+
 -- The mod used to clear its own zombie buffer here, on a ZombieFreeRadius
 -- sandbox option. It is gone on purpose, and the reasoning is worth keeping so
 -- nobody rebuilds it:
@@ -967,6 +1038,7 @@ end
 local function runSpawn(playerObj, opts, centre)
     applySeason(opts)
     giveStartingEquipment(playerObj, opts)
+    giveCabinKey(playerObj, centre)
     spawnStartingVehicle(playerObj, opts, centre)
 
     -- Where the buildings and the water are, read once. The well and the
