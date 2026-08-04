@@ -7,9 +7,10 @@ parked the truck by the same logic. The rules changed in response: bare dirt or
 grass, a walkable gap from the building, never on water, and the well and the
 generator kept apart. This measures what actually landed against those rules.
 
-It also dumps the starting equipment list, which is the fastest way to answer
-"why did I spawn with two ID cards" - vanilla issues none at spawn, so a
-duplicate comes from the saved option string or from a mod.
+It also dumps the starting equipment list. That was meant to answer "why did I
+spawn with two ID cards", on the assumption that vanilla issues none. It does:
+SpawnItems.lua hands every new character a Base.IDcard unconditionally, so
+picking any of the four items that display as plain "ID Card" makes two.
 
 Usage, in a fresh throwaway world, straight after spawning:
 
@@ -133,18 +134,46 @@ end
 local wellSq = describe("well", well)
 local genSq = describe("gen", gen)
 
-local vehicle = nil
-local best = 999
+--[[ The mod hands the player the key it made with createVehicleKey(), so
+     "the vehicle whose key you are carrying" identifies ours exactly. Nearest
+     wins is only a fallback: a map vehicle parked closer than ours gets graded
+     in its place, and a neighbour's van on a driveway fails rules our truck
+     never broke. getKeyId/haveThisKeyId are vanilla, per ISStartVehicleEngine. ]]
+local inv = p:getInventory()
+local mine, nearest, nearestDist = nil, nil, 999
+local seen, listed = {}, {}
 for dx = -R, R do for dy = -R, R do
     local s = getSquare(cx+dx, cy+dy, cz)
     if s then
         local v = s:getVehicleContainer()
         if v then
-            local d = math.max(math.abs(dx), math.abs(dy))
-            if d < best then best = d; vehicle = s end
+            local anchor = v:getSquare()
+            local key = anchor:getX() .. "," .. anchor:getY()
+            if not seen[key] then
+                seen[key] = true
+                local nm = "?"
+                local script = v.getScript and v:getScript()
+                if script and script.getName then nm = script:getName() end
+                --[[ haveThisKeyId answers with the Key item, not a boolean, so
+                     comparing it to true is always false and silently disables
+                     this whole branch. Vanilla only ever truthy-tests it. ]]
+                local owned = false
+                if v.getKeyId and inv and inv.haveThisKeyId then
+                    owned = inv:haveThisKeyId(v:getKeyId()) ~= nil
+                end
+                if owned and not mine then mine = anchor end
+                local d = math.max(math.abs(anchor:getX() - cx),
+                                   math.abs(anchor:getY() - cy))
+                if d < nearestDist then nearestDist = d; nearest = anchor end
+                table.insert(listed, nm .. "@" .. key ..
+                    (owned and " (key held)" or ""))
+            end
         end
     end
 end end
+add("vehiclesSeen", #listed > 0 and table.concat(listed, " ; ") or "none")
+add("vehiclePickedBy", mine and "key" or (nearest and "proximity" or "none"))
+local vehicle = mine or nearest
 if vehicle then
     add("vehicle", vehicle:getX() .. "," .. vehicle:getY())
     add("vehicleWater", isWater(vehicle))
@@ -165,6 +194,11 @@ return table.concat(out, " | ")
 def check(fields):
     """Score what landed against the rules the mod now claims to follow."""
     problems, notes = [], []
+
+    if fields.get("vehiclePickedBy") == "proximity":
+        notes.append("no vehicle key in your inventory, so the vehicle graded "
+                     "below is just the closest one and may belong to the map "
+                     "rather than the mod")
 
     for name, label, clearance in (
         ("well", "well", BUILDING_CLEARANCE),

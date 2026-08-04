@@ -52,6 +52,17 @@ CELL_LOAD_SECONDS = 3.0
 OBJECT_MIN_RADIUS = 2
 OBJECT_SEARCH_RADIUS = 10
 
+# A running generator burns fuel, so only the spawn phase can demand an exact
+# cap. Measured on the first live persist run: a save, a reload and a couple of
+# minutes standing next to it took 10 down to 9.998. Consumption is evidence
+# *for* the thing under test, and failing on it reports the mod broken when it
+# is working. One unit out of the ten-unit cap still catches a real reset.
+PERSIST_FUEL_TOLERANCE = 1.0
+
+# How far from the requested square the player may land and still be measuring
+# the right place.
+TELEPORT_TOLERANCE = 2
+
 
 INSPECT_LUA = """
 local R = __R__
@@ -155,12 +166,16 @@ def report(label, fields):
         print(f"    {key:14} {value}")
 
 
-def check_running(fields, where):
+def check_running(fields, where, fuel_tolerance=0.0):
     """The claim under test: fuelled to the cap, connected, and running.
 
     Fuel is checked against the generator's own getMaxFuel() rather than 100.
     setFuel clamps down to that cap (measured at 10 on B42.20) and the UI draws
     the cap as 100%, so asking for 100 quietly leaves the tank at a tenth.
+
+    fuel_tolerance exists for the phases where time has passed: a generator that
+    is running is also burning, so demanding an exact cap there would fail on
+    the mod doing its job. See PERSIST_FUEL_TOLERANCE.
     """
     problems = []
 
@@ -172,8 +187,11 @@ def check_running(fields, where):
     if fuel is None or max_fuel is None:
         problems.append(f"fuel unreadable (fuel={fields.get('fuel')}, "
                         f"maxFuel={fields.get('maxFuel')})")
-    elif fuel < max_fuel:
-        problems.append(f"fuel {fuel} below the cap of {max_fuel}")
+    elif fuel < max_fuel - fuel_tolerance:
+        problems.append(f"fuel {fuel} below the cap of {max_fuel}"
+                        + (f" by more than the {fuel_tolerance} a running "
+                           "generator could have burned"
+                           if fuel_tolerance else ""))
 
     if boolean(fields, "activated") is not True:
         problems.append(f"not running (activated={fields.get('activated')})")
@@ -208,11 +226,47 @@ def check_placement(fields):
     return problems
 
 
+WHERE_LUA = """
+local p = getPlayer()
+if not p then return "NOPLAYER" end
+local s = p:getCurrentSquare()
+if not s then return "NOSQUARE" end
+return "player=" .. s:getX() .. "," .. s:getY()
+"""
+
+
 def teleport(cfg, at):
+    """Move the player, then confirm they actually arrived.
+
+    Measured on B42.20: pz-test-pilot's teleport sets the position and *then*
+    throws on a follow-up nil call ("Object tried to call nil in teleport"), so
+    a failed status does not mean the player stayed put. The old code sent the
+    command and never read the reply, which is worse than either outcome: every
+    scan here is centred on the player, so silently landing somewhere else
+    makes this phase report a healthy generator as missing.
+    """
     x, y = at
     print(f"  teleporting to {x},{y} and waiting {CELL_LOAD_SECONDS:.0f}s for the cell")
-    send_command(cfg, "teleport", {"x": x, "y": y, "z": 0})
+    reply = send_command(cfg, "teleport", {"x": x, "y": y, "z": 0})
+    if not isinstance(reply, dict) or reply.get("status") != "ok":
+        detail = reply.get("error") if isinstance(reply, dict) else repr(reply)
+        print(f"  warning: teleport reported failure ({detail}); "
+              "checking where the player actually landed")
     time.sleep(CELL_LOAD_SECONDS)
+
+    where = parse(run_lua(cfg, WHERE_LUA)).get("player", "")
+    try:
+        px, py = (int(part) for part in where.split(","))
+    except ValueError:
+        raise HarnessError("could not read the player position after "
+                           f"teleporting to {x},{y} (got {where!r})")
+
+    drift = max(abs(px - x), abs(py - y))
+    if drift > TELEPORT_TOLERANCE:
+        raise HarnessError(
+            f"asked to teleport to {x},{y} but the player is at {px},{py}, "
+            f"{drift} tiles away; this phase would measure the wrong place")
+    print(f"  player at {px},{py}")
 
 
 def verdict(problems, ok_message):
@@ -320,7 +374,8 @@ def phase_persist(cfg, args):
     fields = inspect(cfg, args.radius)
     report("after reload", fields)
 
-    problems = check_running(fields, "the given coordinates")
+    problems = check_running(fields, "the given coordinates",
+                             fuel_tolerance=PERSIST_FUEL_TOLERANCE)
     return verdict(problems, "generator survived the reload with its fuel and "
                              "running state intact")
 
