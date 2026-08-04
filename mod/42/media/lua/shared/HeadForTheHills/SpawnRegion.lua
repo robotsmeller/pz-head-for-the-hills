@@ -21,11 +21,12 @@ local REGION_NAME = "Remote Cabin"
 -- site: each is the standable, in-a-room tile nearest the middle of the building
 -- so the player wakes up in the room instead of pressed against a wall.
 --
--- This list is provisional. It is every candidate from the session-2 shortlist
--- that passed screening, which is all twelve, and it deliberately still includes
--- the ones that are clearly not cabins - #6 is a 20x11 farmhouse, #11 is army
--- storage, #12 is a 3x3 shed - so the mechanism can be seen working before the
--- list is cut. Trim it to the real picks; nothing else has to change.
+-- All twelve are in the mod, hand-picked by Rob (session 7). The spread is
+-- deliberate and not an oversight waiting to be tidied: the buildings run from a
+-- 3x3 shed to a 20x11 farmhouse, and the straight-line haul to the nearest town
+-- runs 610 tiles (#9, Riverside) to 2383 (#7, Brandenburg), so a random draw
+-- varies how hard the start is. Do not cut the list back to the ones that look
+-- most cabin-like.
 local CABINS = {
     { posX = 12473, posY = 8919, posZ = 0 },  -- 1: 8x8, 2 rooms
     { posX = 12719, posY = 8749, posZ = 0 },  -- 2: 13x9, 7 rooms
