@@ -679,8 +679,28 @@ local RESTART_TICKS = 30
 --- Anywhere a person can stand that is not water. Deliberately looser than
 --- isOpenGround: this is not choosing a good spot for a well, it is getting
 --- someone out of a lake, and any floored square beats standing in one.
+---
+--- Only ever the last choice. On its own it picked the inside of a boathouse
+--- standing out over the river (see anchorSquare): dry, floored, and not land.
 local function isDryLand(square)
     return square:getFloor() ~= nil and not isWaterSquare(square)
+end
+
+--- Dry land a person would actually choose: floored, outdoors, and outside any
+--- building's footprint. isOpenGround already carries the outdoors and
+--- footprint tests that keep the well and the generator off cabin tiles, and
+--- the same two are what keep a rescued player out of a wall. The floor test is
+--- added because isOpenGround is happy with a square that has no floor at all.
+local function isStandableGround(square)
+    return square:getFloor() ~= nil and isOpenGround(square)
+end
+
+--- Actual terrain: dirt or grass, outdoors, outside any building's footprint.
+--- This is the one that tells a riverbank from a jetty. isSoftGround is
+--- vanilla's own dirt/grass classification by floor sprite, so decking,
+--- floorboards and paving all fall out of it without naming any of them.
+local function isRealGround(square)
+    return isStandableGround(square) and isSoftGround(square)
 end
 
 local restartPending = nil
@@ -712,11 +732,45 @@ local function anchorSquare(playerObj, square)
 
     -- Only reachable through a custom coordinate, since all twelve cabins are
     -- on dry land. There is no "leave them there" branch on purpose.
-    local dry = findSquare(centre, 1, WATER_RESCUE_RADIUS, isDryLand)
+    -- Three passes, best first. One pass was not enough, and the obvious second
+    -- one was not either. Both measured live in session 9, starting at
+    -- 11280,6568 in the Ohio:
+    --
+    -- * "any floor that is not water" picked 11286,6580, the inside of a
+    --   boathouse standing out over the river. Dry, and not land: 7 of its 9
+    --   neighbours are water. The player spawned clipping the wall and the
+    --   engine shoved them indoors.
+    -- * "outdoors and outside a building" picked 11287,6586, the open jetty,
+    --   still 33 of 49 water. A deck is outdoors and belongs to no building, so
+    --   rejecting buildings does not reject decks.
+    -- * dirt-or-grass picked 11274,6592 on blends_natural_01_70, real bank, at
+    --   the same 12 tiles out, and independently the square the generator was
+    --   placed on that run.
+    --
+    -- What separates a bank from a deck is the ground, and this file already
+    -- classifies ground the way vanilla does. Nothing here names a sprite.
+    local dry = findSquare(centre, 1, WATER_RESCUE_RADIUS, isRealGround)
+    local how = "open ground"
+
+    if not dry then
+        -- A bank that is all gravel, sand or paving. Outdoors and clear of any
+        -- building, just not ground a well would be allowed to stand on.
+        dry = findSquare(centre, 1, WATER_RESCUE_RADIUS, isStandableGround)
+        how = "hard standing"
+    end
+
+    if not dry then
+        -- Last resort, and the reason the promise still holds: any floor at all
+        -- beats leaving someone in the water. This is the pass that picks a
+        -- boathouse, and it now only runs when 60 tiles hold nothing better.
+        dry = findSquare(centre, 1, WATER_RESCUE_RADIUS, isDryLand)
+        how = "the only dry floor nearby"
+    end
+
     if dry then
         print(string.format(
-            "[HeadForTheHills] start coordinate is water; moved to dry ground at %d,%d",
-            dry:getX(), dry:getY()))
+            "[HeadForTheHills] start coordinate is water; moved to %s at %d,%d",
+            how, dry:getX(), dry:getY()))
         playerObj:teleportTo(dry:getX(), dry:getY(), dry:getZ())
         return dry
     end

@@ -137,6 +137,23 @@ for dx = -R, R do for dy = -R, R do
     end
 end end
 
+--[[ Ours, or one the cabin already had. spawnWell returns early when the
+     centre already has a water source (SpawnScenario.lua:583), and cabin #4
+     ships with a well, so on that cabin every placement rule below is being
+     applied to an object the mod never positioned. Measured live at cabin #4:
+     the map's well sits 2 tiles from the building and failed a 3-tile rule it
+     was never subject to.
+
+     Ours is an IsoThumpable the mod names "Well" (SpawnScenario.lua:613-614).
+     The B42 map entity is neither: measured, it came back thump=false with no
+     name, on the same camping_01_16 sprite and carrying a FluidContainer, so
+     sprite and fluid cannot tell them apart and the class can. ]]
+local wellIsOurs = false
+if well then
+    wellIsOurs = instanceof(well, "IsoThumpable") and well:getName() == "Well"
+end
+add("wellIsOurs", tostring(wellIsOurs))
+
 local function describe(prefix, object)
     if not object then add(prefix, "none") return nil end
     local s = object:getSquare()
@@ -236,6 +253,15 @@ def check(fields):
                 notes.append(f"{label}: not present, and its option is off")
             continue
 
+        # A well the cabin already had is not ours to grade. The mod's job on
+        # that cabin was to leave it alone, and it did; measuring it against
+        # rules that governed where we would have *put* one fails the mod for
+        # behaving correctly.
+        if name == "well" and boolean(fields, "wellIsOurs") is False:
+            notes.append(f"well at {where} was already on the map, so the mod "
+                         "skipped placing one; its position is not graded")
+            continue
+
         if boolean(fields, f"{name}Water") is True:
             problems.append(f"{label} at {where} is on water")
 
@@ -252,8 +278,16 @@ def check(fields):
         if name != "vehicle" and not ground.startswith("soft:"):
             problems.append(f"{label} at {where} is on '{ground}', not dirt or grass")
 
+    # Same reasoning as above. wellSquare is only set when the mod places a well
+    # (SpawnScenario.lua:633), and isAwayFromWell passes everything when it is
+    # nil, so on a cabin with its own well the generator was never asked to keep
+    # clear of it. Grading that distance would fail a rule that was never armed.
     gap = num(fields, "wellGenGap")
-    if gap is not None and gap <= GENERATOR_WELL_GAP:
+    if gap is not None and boolean(fields, "wellIsOurs") is False:
+        notes.append(f"well and generator are {gap:.0f} tiles apart, not graded: "
+                     "the well was already on the map, so the generator was "
+                     "never placed relative to it")
+    elif gap is not None and gap <= GENERATOR_WELL_GAP:
         problems.append(f"well and generator are {gap:.0f} tiles apart; "
                         f"the rule is more than {GENERATOR_WELL_GAP}")
 
