@@ -14,10 +14,11 @@ a question the mod is no longer asking.
 **Run this in a throwaway world.** It teleports the player around the map.
 
 Every scan below is centred on the player, so each hop goes through `_pilot`'s
-teleport(), which confirms the landing square rather than trusting the reply.
-pz-test-pilot's teleport is broken on B42.20: it moves the player and *then*
-throws, so both a failed status and a silent success can lie. A candidate that
-cannot be reached is reported as unscreened, never scored from the wrong square.
+teleport(), which moves the player itself and then confirms the landing square.
+pz-test-pilot's own teleport command is unusable on B42.20: measured over a full
+12-hop run, it threw every time and never moved the player at all. A candidate
+that cannot be reached is reported as unscreened, never scored from the wrong
+square.
 
 Requires: PZ running, a save loaded (the harness registers on OnGameStart), and
 the PZTestPilot mod enabled.
@@ -195,14 +196,37 @@ local function isTightVehicleSpot(s)
         and hasClearance(s, VEHICLE_FALLBACK_CLEARANCE) and not blocksDoorway(s)
 end
 
---[[ 1. Is there actually a building here? ]]
-local building = centre:getBuilding()
-add("building", building ~= nil)
-if building then
+--[[ 1. Is there a building here? Not "is this exact tile inside one": the
+     shortlist coordinates were read off the map site and land in the yard
+     beside each cabin, so getBuilding() on the centre square answered false for
+     all twelve while every one of them had a cabin within ten tiles. Search a
+     radius and report the size, which is also the signal that separates a cabin
+     from a farmhouse. ]]
+local BUILDING_SEARCH_RADIUS = 12
+local nearest, nearestDist, nearestAt = nil, 9999, "none"
+for dx = -BUILDING_SEARCH_RADIUS, BUILDING_SEARCH_RADIUS do
+for dy = -BUILDING_SEARCH_RADIUS, BUILDING_SEARCH_RADIUS do
+    local s = getSquare(X+dx, Y+dy, Z)
+    if s then
+        local b = s:getBuilding()
+        if b then
+            local d = math.max(math.abs(dx), math.abs(dy))
+            if d < nearestDist then
+                nearestDist = d
+                nearest = b
+                nearestAt = (X+dx) .. "," .. (Y+dy)
+            end
+        end
+    end
+end end
+add("building", nearest ~= nil)
+if nearest then
+    add("buildingDist", nearestDist)
+    add("buildingAt", nearestAt)
     pcall(function()
-        local d = building:getDef()
+        local d = nearest:getDef()
         add("rooms", d:getRooms():size())
-        add("area", d:getW() * d:getH())
+        add("size", d:getW() .. "x" .. d:getH())
     end)
 end
 
@@ -294,7 +318,7 @@ def verdict(f):
     if f.get("_raw"):
         return "SKIP", f["_raw"]
     if f.get("building") != "true":
-        return "OUT", "no building at these coordinates"
+        return "OUT", "no building within 12 tiles"
 
     well, gen = f.get("wellTier"), f.get("generatorTier")
     vehicle = f.get("vehicleTier")
@@ -377,6 +401,9 @@ def main():
         for num, x, y, _, why, fields, note in group:
             suffix = f" ({note})" if note else ""
             print(f"    #{num}: {x},{y} - {why}{suffix}")
+            print(f"        building {fields.get('size')}, "
+                  f"{fields.get('rooms')} rooms, "
+                  f"{fields.get('buildingDist')} tiles away")
             print(f"        well {fields.get('wellAt')} | "
                   f"generator {fields.get('generatorAt')} | "
                   f"vehicle {fields.get('vehicleAt')}")

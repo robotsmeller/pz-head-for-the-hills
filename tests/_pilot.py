@@ -135,16 +135,42 @@ return "player=" .. s:getX() .. "," .. s:getY()
 """
 
 
+# Move the player with the game's own teleportTo, measured live on B42.20.
+#
+# setX/setY does NOT work and fails in the most misleading way available: the
+# call takes, getX() reads back the new coordinates immediately, and about a
+# second later the character is back where they started. The square never
+# changes at all, because the destination chunk is not loaded and nothing about
+# setting a coordinate asks for it to be. teleportTo streams the chunk in and
+# the square follows within a second.
+#
+# setLx/setLy do not exist on B42's player at all (type() reads nil), so the
+# field-test below is not defensive habit - calling them throws.
+MOVE_LUA = """
+local X, Y = %d, %d
+local p = getPlayer()
+if not p then return "NOPLAYER" end
+if not p.teleportTo then return "NOTELEPORTTO" end
+p:teleportTo(X, Y, 0)
+return "moved=true"
+"""
+
+
 def teleport(cfg, at, settle=CELL_LOAD_SECONDS, tolerance=TELEPORT_TOLERANCE):
     """Move the player to (x, y), then confirm they actually arrived.
 
-    Measured on B42.20: pz-test-pilot's teleport sets the position and *then*
-    throws on a follow-up nil call ("Object tried to call nil in teleport"), so
-    a failed status does not mean the player stayed put. Sending the command and
-    never reading the reply is worse than either outcome: every scan in these
-    tests is centred on the player, so silently landing somewhere else measures
-    the wrong place and reports a healthy object as missing, or grades a cabin
-    for reasons that have nothing to do with the map.
+    Does not use pz-test-pilot's `teleport` command. Measured on B42.20, a live
+    12-hop run: every call answered "Object tried to call nil in teleport
+    java.lang.RuntimeException" and the player did not move at all, staying on
+    the same square for all twelve. An earlier reading of that failure had it
+    moving the player first and throwing afterwards; the survey run disproved
+    that. Either way the command is unusable, so this sets the position through
+    run_lua instead.
+
+    The confirmation stays regardless of how the move is issued. Every scan in
+    these tests is centred on the player, so a hop that silently fails measures
+    the wrong place: it reports a healthy object as missing, or grades a cabin
+    on ground belonging to somewhere else entirely.
 
     Lives here rather than in one test because both callers need the identical
     guard, and a copy in each is how they drift apart.
@@ -153,12 +179,11 @@ def teleport(cfg, at, settle=CELL_LOAD_SECONDS, tolerance=TELEPORT_TOLERANCE):
     within `tolerance` tiles of the requested square.
     """
     x, y = at
-    print(f"  teleporting to {x},{y} and waiting {settle:.0f}s for the cell")
-    reply = send_command(cfg, "teleport", {"x": x, "y": y, "z": 0})
-    if not isinstance(reply, dict) or reply.get("status") != "ok":
-        detail = reply.get("error") if isinstance(reply, dict) else repr(reply)
-        print(f"  warning: teleport reported failure ({detail}); "
-              "checking where the player actually landed")
+    print(f"  moving to {x},{y} and waiting {settle:.0f}s for the cell")
+    moved = parse(run_lua(cfg, MOVE_LUA % (x, y)))
+    if moved.get("moved") != "true":
+        raise HarnessError(f"could not move the player to {x},{y}: "
+                           f"{moved.get('_raw', moved)}")
     time.sleep(settle)
 
     where = parse(run_lua(cfg, WHERE_LUA)).get("player", "")
@@ -166,12 +191,12 @@ def teleport(cfg, at, settle=CELL_LOAD_SECONDS, tolerance=TELEPORT_TOLERANCE):
         px, py = (int(part) for part in where.split(","))
     except ValueError:
         raise HarnessError("could not read the player position after "
-                           f"teleporting to {x},{y} (got {where!r})")
+                           f"moving to {x},{y} (got {where!r})")
 
     drift = max(abs(px - x), abs(py - y))
     if drift > tolerance:
         raise HarnessError(
-            f"asked to teleport to {x},{y} but the player is at {px},{py}, "
+            f"asked to move to {x},{y} but the player is at {px},{py}, "
             f"{drift} tiles away; this would measure the wrong place")
     print(f"  player at {px},{py}")
     return px, py
