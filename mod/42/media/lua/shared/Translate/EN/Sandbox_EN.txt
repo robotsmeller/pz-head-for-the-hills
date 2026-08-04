@@ -6,13 +6,16 @@ Sandbox_EN = {
 	Sandbox_HeadForTheHills_CustomSpawnPoint_tooltip = "Type a map coordinate as X,Y to wake up there instead of at one of the twelve cabins. Leave it empty for a random cabin. Only applies when you pick Remote Cabin as your starting location. A spot you choose yourself gets none of the checking the twelve had, so the vehicle, well and generator may land in odd places or not fit at all. A spot in water moves you to the nearest dry ground.",
 
 	Sandbox_HeadForTheHills_SpawnWell = "Spawn Well If Missing",
-	Sandbox_HeadForTheHills_SpawnWell_tooltip = "If the chosen cabin doesn't already have a well on the property, spawn one nearby. Existing wells are always left as-is.",
+	Sandbox_HeadForTheHills_SpawnWell_tooltip = "If the chosen cabin doesn't already have a well on the property, dig one out in the yard, six to ten tiles from the house and clear of any standing water. Existing wells are always left as-is.",
 
 	Sandbox_HeadForTheHills_SpawnGenerator = "Spawn Generator If Missing",
 	Sandbox_HeadForTheHills_SpawnGenerator_tooltip = "If the chosen cabin doesn't already have a generator, spawn one adjacent to the building. Existing generators are always left as-is.",
 
-	Sandbox_HeadForTheHills_GeneratorFueledAndRunning = "Generator Starts Fueled and Running",
-	Sandbox_HeadForTheHills_GeneratorFueledAndRunning_tooltip = "If a generator is spawned, start it already fueled, connected, and switched on. Disable this for a generator that still needs fuel and manual startup.",
+	Sandbox_HeadForTheHills_GeneratorFueled = "Generator Starts Fueled",
+	Sandbox_HeadForTheHills_GeneratorFueled_tooltip = "Fill the generator's tank. It still needs switching on by hand, and it will not be wired to the cabin unless you also tick the option below.",
+
+	Sandbox_HeadForTheHills_GeneratorConnected = "Generator Starts Connected",
+	Sandbox_HeadForTheHills_GeneratorConnected_tooltip = "Wire the generator to the cabin, saving you the setup step. It is never switched on for you either way, so nothing is running or making noise when you arrive.",
 
 	Sandbox_HeadForTheHills_Season = "Starting Season",
 	Sandbox_HeadForTheHills_Season_tooltip = "The season the game starts in.",

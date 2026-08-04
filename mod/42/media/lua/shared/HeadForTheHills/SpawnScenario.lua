@@ -40,13 +40,42 @@ local EXISTING_OBJECT_SCAN_RADIUS = 12
 -- live run put the well and the generator on the closest legal square, which
 -- was hard against the wall at the foot of the porch steps. Measured in tiles
 -- from the square in every direction, so 3 leaves a walkable gap.
-local BUILDING_CLEARANCE = 3
 local VEHICLE_BUILDING_CLEARANCE = 2
 
--- Keep the well and the generator from landing on top of each other. They are
--- placed by the same search from the same centre, so without this the second
--- one takes the square next to the first.
-local GENERATOR_WELL_GAP = 1
+-- The well belongs out in the yard, not against the house: a band measured
+-- from the nearest building tile, near enough to be the cabin's well and far
+-- enough that nobody drew water off their own back wall. When nothing in the
+-- band qualifies the search widens *outward* only, never inward, because too
+-- close is the failure this band exists to prevent.
+local WELL_BUILDING_MIN = 6
+local WELL_BUILDING_MAX = 10
+local WELL_BUILDING_MAX_RELAXED = 16
+
+-- And not on a shoreline. Standing water beside a well is both wrong to look
+-- at and the thing a well exists to avoid needing. Four tiles is enough to
+-- clear a bank without rejecting a cabin that merely sits near a pond.
+local WELL_WATER_GAP = 4
+
+-- The generator belongs against the house, which is the opposite rule. It is
+-- measured the same way, so 1 means a square whose neighbour is building.
+local GENERATOR_BUILDING_MAX = 1
+local GENERATOR_BUILDING_MAX_RELAXED = 2
+
+-- The ring searches measure from the player; the bands above measure from the
+-- building. Those are the same number only for a player standing on the wall.
+-- Cabin #6 is a 20x11 farmhouse, so someone spawning in the middle of it is
+-- already ten tiles from the far side before the band starts counting, and a
+-- 12-tile search would never reach a legal well square at all.
+local WELL_SEARCH_RADIUS = 24
+local GENERATOR_SEARCH_RADIUS = 16
+
+-- How far out to collect building and water tiles before placing anything.
+-- Wide enough that a candidate at the far edge of the well's search can still
+-- see a building the full relaxed band beyond it, otherwise a square would read
+-- as "no building near" purely because the scan stopped early - and that reads
+-- as open country, which switches the whole rule over to measuring from the
+-- player instead.
+local CONTEXT_RADIUS = WELL_SEARCH_RADIUS + WELL_BUILDING_MAX_RELAXED
 
 -- How much open ground each placement needs around its own square. A vehicle
 -- body spans several tiles, so one free square is not enough to judge by.
@@ -152,6 +181,61 @@ local function isClearOfBuildings(square, margin)
     return true
 end
 
+--- Where the buildings and the water are, collected once per spawn.
+---
+--- The well now has to know its distance to the nearest building tile, and
+--- asking that per candidate means re-scanning a 21x21 box for each one: over a
+--- full ring search that is several hundred thousand square reads during world
+--- init. Scanning once and comparing coordinates afterwards is the same answer
+--- for a fraction of the work, and the comparison is plain arithmetic.
+local function scanContext(centre)
+    local cx, cy, cz = centre:getX(), centre:getY(), centre:getZ()
+    local ctx = { cx = cx, cy = cy, buildings = {}, waters = {} }
+    for dx = -CONTEXT_RADIUS, CONTEXT_RADIUS do
+        for dy = -CONTEXT_RADIUS, CONTEXT_RADIUS do
+            local square = getSquare(cx + dx, cy + dy, cz)
+            if square then
+                if square:getBuilding() ~= nil then
+                    ctx.buildings[#ctx.buildings + 1] = { x = cx + dx, y = cy + dy }
+                end
+                if isWaterSquare(square) then
+                    ctx.waters[#ctx.waters + 1] = { x = cx + dx, y = cy + dy }
+                end
+            end
+        end
+    end
+    return ctx
+end
+
+--- Chebyshev distance to the nearest tile in a list, or math.huge if empty.
+--- Chebyshev rather than straight-line because every other clearance rule in
+--- this file is a box scan, and mixing the two would make "3 tiles" mean two
+--- different distances depending on which rule was asking.
+local function nearestTile(list, x, y)
+    local best = math.huge
+    for i = 1, #list do
+        local tile = list[i]
+        local d = math.max(math.abs(tile.x - x), math.abs(tile.y - y))
+        if d < best then best = d end
+    end
+    return best
+end
+
+--- How far this square is from home.
+---
+--- Normally the nearest building tile. When there is no building in range at
+--- all, the spawn square itself: a custom start coordinate can drop someone in
+--- open country with no cabin anywhere, and "6 to 10 tiles from a building"
+--- would place nothing at all there. With no building, where you stand is
+--- where you live.
+local function homeDistance(ctx, square)
+    if #ctx.buildings == 0 then
+        return math.max(math.abs(square:getX() - ctx.cx),
+                        math.abs(square:getY() - ctx.cy))
+    end
+    return nearestTile(ctx.buildings, square:getX(), square:getY())
+end
+
 --- Outdoors, not part of a building's footprint, dry, and clear enough to place
 --- on. getBuilding() is what keeps wells and generators off the cabin's interior
 --- tiles; isOutside() alone would still allow a porch or enclosed shed. The
@@ -164,15 +248,41 @@ local function isOpenGround(square)
         and not isWaterSquare(square)
 end
 
---- True if the square is a doorway or sits directly beside one. Sealing the
---- cabin door with a well is worse than not placing the well at all, so this is
---- a hard reject rather than a preference.
-local function blocksDoorway(square)
+-- The six sprite types a flight of stairs is built from: top, middle and bottom,
+-- each facing north or west. Vanilla tests them exactly this way, as a square
+-- level question (ISBuildUtil.lua:489) rather than by walking the object list,
+-- and assembles the same six into one isStairs flag in ISBuildIsoEntity.lua:617.
+-- Built once because IsoObjectType is a Java enum lookup, not a table read.
+local STAIR_TYPES = nil
+local function stairTypes()
+    if STAIR_TYPES then return STAIR_TYPES end
+    STAIR_TYPES = {}
+    if not IsoObjectType then return STAIR_TYPES end
+    for _, name in ipairs({ "stairsTW", "stairsTN", "stairsMW",
+                            "stairsMN", "stairsBW", "stairsBN" }) do
+        if IsoObjectType[name] then
+            STAIR_TYPES[#STAIR_TYPES + 1] = IsoObjectType[name]
+        end
+    end
+    return STAIR_TYPES
+end
+
+--- True if the square is a doorway or a stairway, or sits directly beside one.
+--- Sealing the cabin door with a well is worse than not placing the well at
+--- all, and a generator at the foot of the steps is the same mistake wearing a
+--- different hat, so both are hard rejects rather than preferences.
+local function blocksAccess(square)
     local x, y, z = square:getX(), square:getY(), square:getZ()
+    local stairs = stairTypes()
     for dx = -1, 1 do
         for dy = -1, 1 do
             local neighbour = getSquare(x + dx, y + dy, z)
             if neighbour then
+                if neighbour.has then
+                    for i = 1, #stairs do
+                        if neighbour:has(stairs[i]) then return true end
+                    end
+                end
                 local objects = neighbour:getObjects()
                 for i = 0, objects:size() - 1 do
                     local object = objects:get(i)
@@ -204,58 +314,53 @@ local function hasClearance(square, margin)
     return true
 end
 
--- Where the well went this spawn, so the generator does not end up leaning on
--- it. Both are placed by the same search from the same centre, so without this
--- the second one takes the square next to the first. Cleared per spawn rather
--- than left over from a previous character.
-local wellSquare = nil
+--- Somewhere a well belongs: out in the yard on bare dirt or grass, a real walk
+--- from the house rather than against it, nowhere near standing water, and not
+--- sealing a door or a stairway.
+---
+--- maxFromBuilding is the only part that relaxes. When nothing in the band
+--- qualifies the caller widens it outward, never inward, because a well against
+--- the wall is the thing the band exists to prevent and a well further out is
+--- merely a longer walk.
+local function isWellSpot(ctx, maxFromBuilding)
+    return function(square)
+        if not isOpenGround(square) then return false end
+        if not isSoftGround(square) then return false end
+        if blocksAccess(square) then return false end
 
---- Somewhere a well or a generator can stand and still look deliberate: bare
---- dirt or grass, out in the open, a walkable gap from the building, and not
---- sealing a door.
-local function isObjectSpot(square)
-    return isOpenGround(square)
-        and isSoftGround(square)
-        and isClearOfBuildings(square, BUILDING_CLEARANCE)
-        and not blocksDoorway(square)
+        local home = homeDistance(ctx, square)
+        if home < WELL_BUILDING_MIN or home > maxFromBuilding then return false end
+
+        return nearestTile(ctx.waters, square:getX(), square:getY()) > WELL_WATER_GAP
+    end
 end
 
---- The same, minus the ground-type and full building-clearance rules. A cabin
---- ringed by gravel or hard against a treeline would otherwise get nothing at
---- all, and a well on the wrong ground beats no water source.
-local function isFallbackObjectSpot(square)
-    return isOpenGround(square)
-        and isClearOfBuildings(square, 1)
-        and not blocksDoorway(square)
-end
-
-local function isAwayFromWell(square)
-    if not wellSquare then return true end
-    local gap = math.max(math.abs(square:getX() - wellSquare.x),
-                         math.abs(square:getY() - wellSquare.y))
-    return gap > GENERATOR_WELL_GAP
-end
-
-local function isGeneratorSpot(square)
-    return isAwayFromWell(square) and isObjectSpot(square)
-end
-
-local function isFallbackGeneratorSpot(square)
-    return isAwayFromWell(square) and isFallbackObjectSpot(square)
+--- Somewhere a generator belongs: hard against the house, which is the exact
+--- opposite of the well's rule and deliberate. A generator powers the building
+--- it is wired to, so beside the wall is where one would actually stand.
+---
+--- No ground-type test, unlike the well. A generator on a porch slab or on
+--- gravel is fine, and often what the cabin already offers.
+local function isGeneratorSpot(ctx, maxFromBuilding)
+    return function(square)
+        if not isOpenGround(square) then return false end
+        if blocksAccess(square) then return false end
+        return homeDistance(ctx, square) <= maxFromBuilding
+    end
 end
 
 local function isVehicleSpot(square)
     return isOpenGround(square)
         and isClearOfBuildings(square, VEHICLE_BUILDING_CLEARANCE)
         and hasClearance(square, VEHICLE_CLEARANCE)
-        and not blocksDoorway(square)
+        and not blocksAccess(square)
 end
 
 local function isTightVehicleSpot(square)
     return isOpenGround(square)
         and isClearOfBuildings(square, VEHICLE_BUILDING_CLEARANCE)
         and hasClearance(square, VEHICLE_FALLBACK_CLEARANCE)
-        and not blocksDoorway(square)
+        and not blocksAccess(square)
 end
 
 --- The first object within radius matching predicate, or nil. Returns the
@@ -420,14 +525,30 @@ local function findGeneratorNearby(centre)
     end)
 end
 
---- Fill and start a generator.
+--- What the two generator options add up to.
+--- Deliberately never includes running. A generator the player has not switched
+--- on themselves is one they will not know the fuel state of, and the noise
+--- pulls zombies from the first second of the game.
+local function generatorState(opts)
+    return {
+        fuelled = opts.GeneratorFueled and true or false,
+        connected = opts.GeneratorConnected and true or false,
+    }
+end
+
+--- Put a generator into the state the options asked for, and no further.
+---
 --- Fuel is capped at getMaxFuel(), which measured 10 on B42.20, so passing 100
---- silently clamps *down* to the cap. Ask for the cap instead. setActivated is
---- gated on having fuel, so fuel has to go in first.
-local function fuelAndStart(generator)
-    pcall(function() generator:setFuel(generator:getMaxFuel()) end)
-    generator:setConnected(true)
-    generator:setActivated(true)
+--- silently clamps *down* to the cap. Ask for the cap instead.
+---
+--- setActivated is never called. Connected means wired to the house, not
+--- switched on, so a player who ticked both walks out to a generator ready to
+--- start with one action and no cable to run.
+local function applyGeneratorState(generator, state)
+    if state.fuelled then
+        pcall(function() generator:setFuel(generator:getMaxFuel()) end)
+    end
+    generator:setConnected(state.connected)
     -- Vanilla's ISActivateGenerator:complete() syncs after flipping the switch.
     -- transmitCompleteItemToClients, which the callers below use, is the shape
     -- MOGenerator.lua uses for a generator it just *created*; sync is the one
@@ -435,8 +556,8 @@ local function fuelAndStart(generator)
     pcall(function() generator:sync() end)
 end
 
--- Starting a generator from inside OnNewGame does not stick. Measured live
--- (session 4): a generator created and started there came back fuel 0,
+-- Setting a generator's state from inside OnNewGame does not stick. Measured
+-- live (session 4): a generator created and started there came back fuel 0,
 -- disconnected and off, with no error raised - and at condition 100 on sprite
 -- appliances_misc_01_0, which is exactly what MOGenerator.lua's
 -- ReplaceExistingObject builds. That file registers handlers on that very
@@ -445,26 +566,27 @@ end
 -- race whatever runs during world init, re-apply once the world is running.
 -- Ticks do not run during IsoWorld.init, so the first one is already past it.
 local REASSERT_TICKS = 30
-local pendingStart = nil
+local pendingState = nil
 local reassertGenerator
 
---- Re-find the generator we started and start it again if something undid it.
+--- Re-find the generator and put its fuel and connection back if world init
+--- ate them. Never touches the switch, so a generator that starts off stays off.
 reassertGenerator = function()
-    if not pendingStart then
+    if not pendingState then
         Events.OnTick.Remove(reassertGenerator)
         return
     end
 
-    pendingStart.ticks = pendingStart.ticks - 1
-    if pendingStart.ticks > 0 then return end
+    pendingState.ticks = pendingState.ticks - 1
+    if pendingState.ticks > 0 then return end
 
-    local target = pendingStart
-    pendingStart = nil
+    local target = pendingState
+    pendingState = nil
     Events.OnTick.Remove(reassertGenerator)
 
     local square = getSquare(target.x, target.y, target.z)
     if not square then
-        print("[HeadForTheHills] generator square never loaded; cannot start it")
+        print("[HeadForTheHills] generator square never loaded; cannot set it up")
         return
     end
 
@@ -474,24 +596,31 @@ reassertGenerator = function()
         return instanceof(object, "IsoGenerator")
     end)
     if not generator then
-        print("[HeadForTheHills] generator went missing before it could be started")
+        print("[HeadForTheHills] generator went missing before it could be set up")
         return
     end
 
-    if generator:isActivated() and generator:getFuel() > 0 then return end
+    -- Only the parts that were asked for and are not already true. Reading the
+    -- fuel back rather than assuming is the whole point of this pass.
+    local fuelOk = not target.state.fuelled or generator:getFuel() > 0
+    local connOk = generator:isConnected() == target.state.connected
+    if fuelOk and connOk then return end
 
-    print("[HeadForTheHills] generator was not running after world init; starting it")
-    fuelAndStart(generator)
+    print(string.format(
+        "[HeadForTheHills] generator lost its setup during world init "
+        .. "(fuel %d, connected %s); re-applying",
+        generator:getFuel(), tostring(generator:isConnected())))
+    applyGeneratorState(generator, target.state)
     pcall(function() generator:transmitCompleteItemToClients() end)
 end
 
-local function startWhenSettled(generator)
+local function reapplyWhenSettled(generator, state)
     local square = generator:getSquare()
     if not square then return end
-    if pendingStart then Events.OnTick.Remove(reassertGenerator) end
-    pendingStart = {
+    if pendingState then Events.OnTick.Remove(reassertGenerator) end
+    pendingState = {
         x = square:getX(), y = square:getY(), z = square:getZ(),
-        ticks = REASSERT_TICKS,
+        ticks = REASSERT_TICKS, state = state,
     }
     Events.OnTick.Add(reassertGenerator)
 end
@@ -516,40 +645,42 @@ local function hasWellNearby(centre)
     return findObjectNearby(centre, EXISTING_OBJECT_SCAN_RADIUS, isWaterSource) ~= nil
 end
 
-local function spawnGenerator(playerObj, opts, centre)
+local function spawnGenerator(playerObj, opts, centre, ctx)
     if not opts.SpawnGenerator then return end
 
-    local running = opts.GeneratorFueledAndRunning and true or false
+    local state = generatorState(opts)
 
     -- The cabin may already have come with one. Vanilla map generators are
     -- created at condition 100 with no fuel (see MOGenerator.lua), so leaving
-    -- it alone hands the player a dead generator while the option they ticked
-    -- promised a running one. Start theirs rather than adding a second.
+    -- it alone hands the player a dead generator while the options they ticked
+    -- promised a fuelled or wired one. Set theirs rather than adding a second.
     local existing = findGeneratorNearby(centre)
     if existing then
-        if running then
-            fuelAndStart(existing)
+        if state.fuelled or state.connected then
+            applyGeneratorState(existing, state)
             -- MP: clients already know this generator exists, but its fuel and
-            -- running state just changed under them and nothing else will push
+            -- connection just changed under them and nothing else will push
             -- that across. The freshly spawned path below transmits for the
             -- same reason.
             pcall(function() existing:transmitCompleteItemToClients() end)
             -- A map generator is built by the same world-init pass that eats
             -- our write, so this branch needs the re-check too.
-            startWhenSettled(existing)
+            reapplyWhenSettled(existing, state)
         end
         return
     end
 
-    -- Bare ground a walkable gap from the building, clear of doorways so it
-    -- cannot seal the player in, and not right up against the well.
-    local square = findSquare(centre, OBJECT_MIN_RADIUS, OBJECT_SEARCH_RADIUS, isGeneratorSpot)
+    -- Hard against the house, clear of doors and steps so it cannot pen the
+    -- player in. Widens by a tile if every wall square is beside an opening.
+    local square = findSquare(centre, 1, GENERATOR_SEARCH_RADIUS,
+                              isGeneratorSpot(ctx, GENERATOR_BUILDING_MAX))
     if not square then
-        square = findSquare(centre, OBJECT_MIN_RADIUS, OBJECT_SEARCH_RADIUS,
-                            isFallbackGeneratorSpot)
+        square = findSquare(centre, 1, GENERATOR_SEARCH_RADIUS,
+                            isGeneratorSpot(ctx, GENERATOR_BUILDING_MAX_RELAXED))
         if square then
-            print("[HeadForTheHills] no bare ground clear of the building for the "
-                  .. "generator; using " .. square:getX() .. "," .. square:getY())
+            print("[HeadForTheHills] nothing against the wall was clear of doors "
+                  .. "or steps for the generator; using "
+                  .. square:getX() .. "," .. square:getY())
         end
     end
     if not square then
@@ -560,39 +691,47 @@ local function spawnGenerator(playerObj, opts, centre)
     local item = instanceItem(GENERATOR_ITEM)
     if not item then return end
 
-    -- Fuel goes on afterwards via fuelAndStart, which respects getMaxFuel().
-    -- The constructor does carry modData fuel across, but it does not clamp it,
-    -- so seeding 100 here leaves the generator holding ten times its own cap.
+    -- Fuel goes on afterwards via applyGeneratorState, which respects
+    -- getMaxFuel(). The constructor does carry modData fuel across, but it does
+    -- not clamp it, so seeding 100 here leaves it holding ten times its cap.
     item:setCondition(100)
     item:getModData().fuel = 0
 
     local generator = IsoGenerator.new(item, getWorld():getCell(), square)
     if not generator then return end
 
-    if running then
-        fuelAndStart(generator)
-        startWhenSettled(generator)
+    if state.fuelled or state.connected then
+        applyGeneratorState(generator, state)
+        reapplyWhenSettled(generator, state)
     end
 
     pcall(function() generator:transmitCompleteItemToClients() end)
 end
 
-local function spawnWell(playerObj, opts, centre)
+local function spawnWell(playerObj, opts, centre, ctx)
     if not opts.SpawnWell then return end
 
     if hasWellNearby(centre) then return end
 
-    local square = findSquare(centre, OBJECT_MIN_RADIUS, OBJECT_SEARCH_RADIUS, isObjectSpot)
+    -- Out in the yard, six to ten tiles off the house. If nothing in that band
+    -- is dry open ground the band stretches outward to sixteen, and if that
+    -- still finds nothing the cabin gets no well at all. A missing well is
+    -- visible and honest; one built against the back wall is the thing this
+    -- rule exists to prevent.
+    local square = findSquare(centre, OBJECT_MIN_RADIUS, WELL_SEARCH_RADIUS,
+                              isWellSpot(ctx, WELL_BUILDING_MAX))
     if not square then
-        square = findSquare(centre, OBJECT_MIN_RADIUS, OBJECT_SEARCH_RADIUS,
-                            isFallbackObjectSpot)
+        square = findSquare(centre, OBJECT_MIN_RADIUS, WELL_SEARCH_RADIUS,
+                            isWellSpot(ctx, WELL_BUILDING_MAX_RELAXED))
         if square then
-            print("[HeadForTheHills] no bare ground clear of the building for the "
-                  .. "well; using " .. square:getX() .. "," .. square:getY())
+            print("[HeadForTheHills] nothing " .. WELL_BUILDING_MIN .. "-"
+                  .. WELL_BUILDING_MAX .. " tiles out suited the well; using "
+                  .. square:getX() .. "," .. square:getY())
         end
     end
     if not square then
-        print("[HeadForTheHills] no open ground found for the well")
+        print("[HeadForTheHills] no ground clear of the house and the water "
+              .. "was found for the well; none placed")
         return
     end
 
@@ -626,12 +765,6 @@ local function spawnWell(playerObj, opts, centre)
         square:AddSpecialObject(well)
         well:transmitCompleteItemToClients()
     end)
-
-    if ok then
-        -- Remembered so the generator, which searches the same rings from the
-        -- same centre, does not take the square right beside it.
-        wellSquare = { x = square:getX(), y = square:getY() }
-    end
 
     if not ok then
         -- Guarded because the script lookup is the one step not yet exercised
@@ -788,15 +921,16 @@ local function anchorSquare(playerObj, square)
 end
 
 local function runSpawn(playerObj, opts, centre)
-    -- Per-spawn state, cleared rather than inherited from a previous character
-    -- in the same session.
-    wellSquare = nil
-
     applySeason(opts)
     giveStartingEquipment(playerObj, opts)
     spawnStartingVehicle(playerObj, opts, centre)
-    spawnWell(playerObj, opts, centre)
-    spawnGenerator(playerObj, opts, centre)
+
+    -- Where the buildings and the water are, read once. The well and the
+    -- generator both measure themselves against it, in opposite directions, and
+    -- re-deriving it per candidate square is what makes that expensive.
+    local ctx = scanContext(centre)
+    spawnWell(playerObj, opts, centre, ctx)
+    spawnGenerator(playerObj, opts, centre, ctx)
 end
 
 local function onNewGame(playerObj, square)

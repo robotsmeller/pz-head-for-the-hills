@@ -2,8 +2,9 @@
 Head for the Hills! - generator verification (issue #6).
 
 Everything else in SpawnScenario.lua was verified live in session 3. The
-generator was not: `spawnGenerator`'s fuelled-and-running behaviour has never
-executed, on either of its two branches.
+generator was not: `spawnGenerator`'s fuel-and-connect behaviour has never
+executed, on either of its two branches. It is never switched on: the mod
+fills the tank and wires it to the cabin, and the player flips the switch.
 
     spawn     the freshly placed generator, straight after a new world.
               Run this first, before doing anything else in the save.
@@ -44,19 +45,21 @@ from _pilot import (
 # change this, otherwise the check answers a question the mod is not asking.
 SCAN_RADIUS = 12
 
-# Where the mod is allowed to place things, from SpawnScenario.lua. The search
-# radius went 10 -> 12 in the session-4 placement rewrite and this copy did not
-# follow, which would have failed a generator legitimately placed 11 or 12 tiles
-# out. It never fired only because both live runs landed inside 10.
-OBJECT_MIN_RADIUS = 2
-OBJECT_SEARCH_RADIUS = 12
+# Where the mod is allowed to place the generator, from SpawnScenario.lua. The
+# search radius is measured from the player and is only a sanity bound now; the
+# rule that matters is GENERATOR_BUILDING_MAX_RELAXED, measured from the house.
+# Keep these in step with the mod, otherwise the check answers a question the
+# mod is not asking.
+GENERATOR_MIN_RADIUS = 1
+GENERATOR_SEARCH_RADIUS = 16
+GENERATOR_BUILDING_MAX_RELAXED = 2
 
-# A running generator burns fuel, so only the spawn phase can demand an exact
-# cap. Measured on the first live persist run: a save, a reload and a couple of
-# minutes standing next to it took 10 down to 9.998. Consumption is evidence
-# *for* the thing under test, and failing on it reports the mod broken when it
-# is working. One unit out of the ten-unit cap still catches a real reset.
-PERSIST_FUEL_TOLERANCE = 1.0
+# The generator is never started for the player, so it never burns fuel and the
+# cap can be demanded exactly at every phase. The old tolerance existed because
+# a running generator consumes: measured at 10 down to 9.998 over a save, a
+# reload and a couple of minutes. Kept small rather than zero because a save
+# round trip is still free to round the float.
+PERSIST_FUEL_TOLERANCE = 0.01
 
 
 INSPECT_LUA = """
@@ -117,6 +120,18 @@ add("condition", try(function() return best:getCondition() end))
 add("genSprite", try(function() local s = best:getSprite() return s and s:getName() end))
 add("genInBuilding", bs:getBuilding() ~= nil)
 add("genOutside", bs:isOutside())
+--[[ Distance to the nearest building tile, which is what the placement rule is
+     actually written in terms of. The generator belongs against the house, so
+     this is the number under test, not the distance from the player. ]]
+local gb = 9999
+for bx = -6, 6 do for by = -6, 6 do
+    local s2 = getSquare(bs:getX() + bx, bs:getY() + by, bs:getZ())
+    if s2 and s2:getBuilding() ~= nil then
+        local d2 = math.max(math.abs(bx), math.abs(by))
+        if d2 < gb then gb = d2 end
+    end
+end end
+add("genToBuilding", gb)
 return table.concat(out, " | ")
 """
 
@@ -132,7 +147,8 @@ sv.SpawnWell = false
 sv.SpawnStartingEquipment = false
 sv.Season = 0
 sv.SpawnGenerator = true
-sv.GeneratorFueledAndRunning = true
+sv.GeneratorFueled = true
+sv.GeneratorConnected = true
 return "armed | triggerEvent=" .. type(triggerEvent)
 """
 
@@ -161,15 +177,16 @@ def report(label, fields):
 
 
 def check_running(fields, where, fuel_tolerance=0.0):
-    """The claim under test: fuelled to the cap, connected, and running.
+    """The claim under test: fuelled to the cap, connected, and NOT running.
 
     Fuel is checked against the generator's own getMaxFuel() rather than 100.
     setFuel clamps down to that cap (measured at 10 on B42.20) and the UI draws
     the cap as 100%, so asking for 100 quietly leaves the tank at a tenth.
 
-    fuel_tolerance exists for the phases where time has passed: a generator that
-    is running is also burning, so demanding an exact cap there would fail on
-    the mod doing its job. See PERSIST_FUEL_TOLERANCE.
+    Switched off is a requirement, not an absence of one. The mod fills and
+    wires a generator but never flips the switch: a machine running before the
+    player has touched it burns fuel they did not choose to spend and makes
+    noise from the first second of the game.
     """
     problems = []
 
@@ -183,12 +200,13 @@ def check_running(fields, where, fuel_tolerance=0.0):
                         f"maxFuel={fields.get('maxFuel')})")
     elif fuel < max_fuel - fuel_tolerance:
         problems.append(f"fuel {fuel} below the cap of {max_fuel}"
-                        + (f" by more than the {fuel_tolerance} a running "
-                           "generator could have burned"
+                        + (f" by more than the {fuel_tolerance} a save round "
+                           "trip could have rounded away"
                            if fuel_tolerance else ""))
 
-    if boolean(fields, "activated") is not True:
-        problems.append(f"not running (activated={fields.get('activated')})")
+    if boolean(fields, "activated") is not False:
+        problems.append(f"running when it should be switched off "
+                        f"(activated={fields.get('activated')})")
     if boolean(fields, "connected") is not True:
         problems.append(f"not connected (connected={fields.get('connected')})")
 
@@ -196,22 +214,34 @@ def check_running(fields, where, fuel_tolerance=0.0):
 
 
 def check_placement(fields):
-    """Beside the cabin, not inside it, and inside the mod's search band."""
+    """Against the cabin, not inside it, and not blocking the way in.
+
+    The rule under test is the distance to the nearest *building* tile, not to
+    the player. A generator powers the building it is wired to, so beside the
+    wall is where one belongs, and that is the opposite of the well's rule.
+    """
     problems = []
     if boolean(fields, "genInBuilding") is not False:
         problems.append("generator landed inside a building footprint")
     if boolean(fields, "genOutside") is not True:
         problems.append("generator landed indoors")
 
+    to_building = num(fields, "genToBuilding")
+    if to_building is None:
+        problems.append("no distance to the building reported")
+    elif to_building > GENERATOR_BUILDING_MAX_RELAXED:
+        problems.append(f"generator {to_building:.0f} tiles from the nearest "
+                        f"building; it is supposed to sit against the house, "
+                        f"within {GENERATOR_BUILDING_MAX_RELAXED}")
+
     distance = num(fields, "genDist")
     if distance is None:
         problems.append("no distance reported")
-    elif distance < OBJECT_MIN_RADIUS:
-        problems.append(f"generator only {distance:.0f} tiles out; the minimum "
-                        f"is {OBJECT_MIN_RADIUS} and closer means against a wall")
-    elif distance > OBJECT_SEARCH_RADIUS:
+    elif distance < GENERATOR_MIN_RADIUS:
+        problems.append(f"generator only {distance:.0f} tiles from the player")
+    elif distance > GENERATOR_SEARCH_RADIUS:
         problems.append(f"generator {distance:.0f} tiles out, past the "
-                        f"{OBJECT_SEARCH_RADIUS}-tile search limit")
+                        f"{GENERATOR_SEARCH_RADIUS}-tile search limit")
 
     if num(fields, "wells") and fields.get("wellAt") == ",".join(
             fields.get("genAt", "").split(",")[:2]):
@@ -245,14 +275,14 @@ def phase_spawn(cfg, args):
               "this is\n  a map generator the mod adopted, not one it placed. "
               "Roll another world\n  for the fresh branch; this save can still "
               "serve `existing`.")
-        report("running state", {k: fields[k] for k in
+        report("generator state", {k: fields[k] for k in
                                  ("fuel", "maxFuel", "activated", "connected")
                                  if k in fields})
         return 3
 
     problems = check_running(fields, "the player") + check_placement(fields)
     code = verdict(problems, "generator placed outside, fuelled to its cap, "
-                             "connected and running")
+                             "fuelled and connected, switched off")
 
     where = fields.get("genAt", "").split(",")
     if len(where) >= 2:
@@ -277,9 +307,14 @@ def phase_existing(cfg, args):
         print("       Run survey_candidates.py and pick a coordinate reporting "
               "existingGenerator=true.")
         return 3
-    if boolean(before, "activated") is True:
-        print("\nSKIP - the generator here is already running, so starting it "
-              "again would prove nothing.")
+    # The discriminator is no longer "is it running", because the mod never
+    # starts one. It is whether the generator is already in the state the mod
+    # would put it in: a map generator is built with no fuel and disconnected
+    # (MOGenerator.lua), so anything else here means something already touched
+    # it and the branch cannot be told apart from the starting conditions.
+    if boolean(before, "connected") is True and (num(before, "fuel") or 0) > 0:
+        print("\nSKIP - the generator here is already fuelled and connected, so "
+              "setting it up again would prove nothing.")
         return 3
 
     armed = run_lua(cfg, ARM_LUA)
@@ -318,7 +353,7 @@ def phase_existing(cfg, args):
 
 def phase_persist(cfg, args):
     """Same generator, after a save and reload."""
-    print("Persistence: the generator should still be there, still running.\n")
+    print("Persistence: the generator should still be there, still fuelled and wired.\n")
     if args.at:
         teleport(cfg, args.at)
 
@@ -328,7 +363,7 @@ def phase_persist(cfg, args):
     problems = check_running(fields, "the given coordinates",
                              fuel_tolerance=PERSIST_FUEL_TOLERANCE)
     return verdict(problems, "generator survived the reload with its fuel and "
-                             "running state intact")
+                             "state intact")
 
 
 PHASES = {

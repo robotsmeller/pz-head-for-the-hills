@@ -84,7 +84,8 @@ if not sv then return "NOOPTIONS" end
 sv.SpawnVehicle = false
 sv.SpawnWell = false
 sv.SpawnGenerator = false
-sv.GeneratorFueledAndRunning = false
+sv.GeneratorFueled = false
+sv.GeneratorConnected = false
 sv.Season = 0
 sv.SpawnStartingEquipment = true
 sv.StartingEquipmentList = "%s"

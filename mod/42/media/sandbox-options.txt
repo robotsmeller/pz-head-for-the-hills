@@ -18,10 +18,16 @@ option HeadForTheHills.SpawnGenerator
 	page = HeadForTheHills, translation = HeadForTheHills_SpawnGenerator,
 }
 
-option HeadForTheHills.GeneratorFueledAndRunning
+option HeadForTheHills.GeneratorFueled
 {
-	type = boolean, default = true,
-	page = HeadForTheHills, translation = HeadForTheHills_GeneratorFueledAndRunning,
+	type = boolean, default = false,
+	page = HeadForTheHills, translation = HeadForTheHills_GeneratorFueled,
+}
+
+option HeadForTheHills.GeneratorConnected
+{
+	type = boolean, default = false,
+	page = HeadForTheHills, translation = HeadForTheHills_GeneratorConnected,
 }
 
 option HeadForTheHills.Season
