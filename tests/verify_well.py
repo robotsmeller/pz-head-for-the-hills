@@ -1,7 +1,7 @@
 """
 Head for the Hills! - the well's skip-existing branch.
 
-spawnWell() bails out early when hasWellNearby() finds one, so a cabin that
+spawnWell() bails out early when findWellNearby() finds one, so a cabin that
 already has a well on the map keeps it instead of getting a second dug beside
 it. Every other branch of the spawn had been driven live by session 6; this one
 never had, because it only fires at a location that already has a well.

@@ -664,8 +664,8 @@ local function isWaterSource(object)
     return okCap and type(capacity) == "number" and capacity >= WELL_MIN_CAPACITY
 end
 
-local function hasWellNearby(centre)
-    return findObjectNearby(centre, EXISTING_OBJECT_SCAN_RADIUS, isWaterSource) ~= nil
+local function findWellNearby(centre)
+    return findObjectNearby(centre, EXISTING_OBJECT_SCAN_RADIUS, isWaterSource)
 end
 
 local function spawnGenerator(playerObj, opts, centre, ctx)
@@ -679,6 +679,11 @@ local function spawnGenerator(playerObj, opts, centre, ctx)
     -- promised a fuelled or wired one. Set theirs rather than adding a second.
     local existing = findGeneratorNearby(centre)
     if existing then
+        local where = existing:getSquare()
+        print(string.format(
+            "[HeadForTheHills] cabin already has a generator at %s; setting it up "
+            .. "rather than adding a second",
+            where and (where:getX() .. "," .. where:getY()) or "an unreadable square"))
         if state.fuelled or state.connected then
             applyGeneratorState(existing, state)
             -- MP: clients already know this generator exists, but its fuel and
@@ -734,7 +739,19 @@ end
 local function spawnWell(playerObj, opts, centre, ctx)
     if not opts.SpawnWell then return end
 
-    if hasWellNearby(centre) then return end
+    -- Said out loud, because silence here is indistinguishable from silence
+    -- after a successful dig, and that cost two live runs to work out: both
+    -- landed on a cabin that already had a well, and nothing in the log or the
+    -- world said whether the mod had skipped or placed. A check for "did the
+    -- mod place X" is worthless unless it can tell it was asked to.
+    local existing = findWellNearby(centre)
+    if existing then
+        local where = existing:getSquare()
+        print(string.format(
+            "[HeadForTheHills] cabin already has a well at %s; leaving it alone",
+            where and (where:getX() .. "," .. where:getY()) or "an unreadable square"))
+        return
+    end
 
     -- Out in the yard, six to ten tiles off the house. If nothing in that band
     -- is dry open ground the band stretches outward to sixteen, and if that
@@ -789,7 +806,11 @@ local function spawnWell(playerObj, opts, centre, ctx)
         well:transmitCompleteItemToClients()
     end)
 
-    if not ok then
+    if ok then
+        print(string.format(
+            "[HeadForTheHills] well dug at %d,%d, %d tiles from the house",
+            square:getX(), square:getY(), homeDistance(ctx, square)))
+    else
         -- Guarded because the script lookup is the one step not yet exercised
         -- outside vanilla's own map-object handlers. The message names the
         -- failing step so a live run tells us which half needs revisiting.
