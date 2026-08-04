@@ -1,0 +1,6 @@
+version=1
+id=
+title=Head for the Hills!
+description=See workshop page
+tags=Build 42;Misc
+visibility=public
