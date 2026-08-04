@@ -12,6 +12,7 @@ verify_generator.py.
 
 import os
 import sys
+import time
 from pathlib import Path
 
 # Sibling checkout by default; override when pz-test-pilot lives elsewhere.
@@ -31,8 +32,17 @@ from _ipc import send_command, CommandTimeout, HarnessDead   # noqa: E402
 
 __all__ = [
     "load", "send_command", "run_lua", "payload", "flatten", "parse",
-    "num", "boolean", "CommandTimeout", "HarnessDead", "HarnessError",
+    "num", "boolean", "teleport", "CELL_LOAD_SECONDS", "TELEPORT_TOLERANCE",
+    "CommandTimeout", "HarnessDead", "HarnessError",
 ]
+
+# Seconds to let the cell stream in after a teleport. The harness exposes no
+# wait_ticks command, so this is a plain sleep rather than a condition.
+CELL_LOAD_SECONDS = 3.0
+
+# How far from the requested square the player may land and still be measuring
+# the right place.
+TELEPORT_TOLERANCE = 2
 
 
 class HarnessError(Exception):
@@ -114,3 +124,54 @@ def boolean(fields, key):
     if value == "false":
         return False
     return None
+
+
+WHERE_LUA = """
+local p = getPlayer()
+if not p then return "NOPLAYER" end
+local s = p:getCurrentSquare()
+if not s then return "NOSQUARE" end
+return "player=" .. s:getX() .. "," .. s:getY()
+"""
+
+
+def teleport(cfg, at, settle=CELL_LOAD_SECONDS, tolerance=TELEPORT_TOLERANCE):
+    """Move the player to (x, y), then confirm they actually arrived.
+
+    Measured on B42.20: pz-test-pilot's teleport sets the position and *then*
+    throws on a follow-up nil call ("Object tried to call nil in teleport"), so
+    a failed status does not mean the player stayed put. Sending the command and
+    never reading the reply is worse than either outcome: every scan in these
+    tests is centred on the player, so silently landing somewhere else measures
+    the wrong place and reports a healthy object as missing, or grades a cabin
+    for reasons that have nothing to do with the map.
+
+    Lives here rather than in one test because both callers need the identical
+    guard, and a copy in each is how they drift apart.
+
+    Returns the confirmed (x, y). Raises HarnessError if the player is not
+    within `tolerance` tiles of the requested square.
+    """
+    x, y = at
+    print(f"  teleporting to {x},{y} and waiting {settle:.0f}s for the cell")
+    reply = send_command(cfg, "teleport", {"x": x, "y": y, "z": 0})
+    if not isinstance(reply, dict) or reply.get("status") != "ok":
+        detail = reply.get("error") if isinstance(reply, dict) else repr(reply)
+        print(f"  warning: teleport reported failure ({detail}); "
+              "checking where the player actually landed")
+    time.sleep(settle)
+
+    where = parse(run_lua(cfg, WHERE_LUA)).get("player", "")
+    try:
+        px, py = (int(part) for part in where.split(","))
+    except ValueError:
+        raise HarnessError("could not read the player position after "
+                           f"teleporting to {x},{y} (got {where!r})")
+
+    drift = max(abs(px - x), abs(py - y))
+    if drift > tolerance:
+        raise HarnessError(
+            f"asked to teleport to {x},{y} but the player is at {px},{py}, "
+            f"{drift} tiles away; this would measure the wrong place")
+    print(f"  player at {px},{py}")
+    return px, py

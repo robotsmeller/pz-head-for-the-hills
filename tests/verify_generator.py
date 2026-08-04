@@ -34,10 +34,9 @@ tick-heartbeat false positive; read Zomboid/Lua/TestPilot/result.txt first.
 
 import argparse
 import sys
-import time
 
 from _pilot import (
-    load, send_command, run_lua, parse, num, boolean,
+    load, run_lua, parse, num, boolean, teleport,
     CommandTimeout, HarnessDead, HarnessError,
 )
 
@@ -45,12 +44,12 @@ from _pilot import (
 # change this, otherwise the check answers a question the mod is not asking.
 SCAN_RADIUS = 12
 
-# Seconds to let the cell stream in after a teleport.
-CELL_LOAD_SECONDS = 3.0
-
-# Where the mod is allowed to place things, from SpawnScenario.lua.
+# Where the mod is allowed to place things, from SpawnScenario.lua. The search
+# radius went 10 -> 12 in the session-4 placement rewrite and this copy did not
+# follow, which would have failed a generator legitimately placed 11 or 12 tiles
+# out. It never fired only because both live runs landed inside 10.
 OBJECT_MIN_RADIUS = 2
-OBJECT_SEARCH_RADIUS = 10
+OBJECT_SEARCH_RADIUS = 12
 
 # A running generator burns fuel, so only the spawn phase can demand an exact
 # cap. Measured on the first live persist run: a save, a reload and a couple of
@@ -58,10 +57,6 @@ OBJECT_SEARCH_RADIUS = 10
 # *for* the thing under test, and failing on it reports the mod broken when it
 # is working. One unit out of the ten-unit cap still catches a real reset.
 PERSIST_FUEL_TOLERANCE = 1.0
-
-# How far from the requested square the player may land and still be measuring
-# the right place.
-TELEPORT_TOLERANCE = 2
 
 
 INSPECT_LUA = """
@@ -224,49 +219,6 @@ def check_placement(fields):
         problems.append("well and generator share a square")
 
     return problems
-
-
-WHERE_LUA = """
-local p = getPlayer()
-if not p then return "NOPLAYER" end
-local s = p:getCurrentSquare()
-if not s then return "NOSQUARE" end
-return "player=" .. s:getX() .. "," .. s:getY()
-"""
-
-
-def teleport(cfg, at):
-    """Move the player, then confirm they actually arrived.
-
-    Measured on B42.20: pz-test-pilot's teleport sets the position and *then*
-    throws on a follow-up nil call ("Object tried to call nil in teleport"), so
-    a failed status does not mean the player stayed put. The old code sent the
-    command and never read the reply, which is worse than either outcome: every
-    scan here is centred on the player, so silently landing somewhere else
-    makes this phase report a healthy generator as missing.
-    """
-    x, y = at
-    print(f"  teleporting to {x},{y} and waiting {CELL_LOAD_SECONDS:.0f}s for the cell")
-    reply = send_command(cfg, "teleport", {"x": x, "y": y, "z": 0})
-    if not isinstance(reply, dict) or reply.get("status") != "ok":
-        detail = reply.get("error") if isinstance(reply, dict) else repr(reply)
-        print(f"  warning: teleport reported failure ({detail}); "
-              "checking where the player actually landed")
-    time.sleep(CELL_LOAD_SECONDS)
-
-    where = parse(run_lua(cfg, WHERE_LUA)).get("player", "")
-    try:
-        px, py = (int(part) for part in where.split(","))
-    except ValueError:
-        raise HarnessError("could not read the player position after "
-                           f"teleporting to {x},{y} (got {where!r})")
-
-    drift = max(abs(px - x), abs(py - y))
-    if drift > TELEPORT_TOLERANCE:
-        raise HarnessError(
-            f"asked to teleport to {x},{y} but the player is at {px},{py}, "
-            f"{drift} tiles away; this phase would measure the wrong place")
-    print(f"  player at {px},{py}")
 
 
 def verdict(problems, ok_message):
