@@ -900,7 +900,7 @@ end
 --   ZombieLore.PlayerSpawnZombieRemoval setting, which is now left at whatever
 --   the player chose rather than overridden.
 -- * A cabin the survivor has been holed up in for weeks having a quiet treeline
---   is the fiction; vanilla's own removal covers the doorstep, and the twelve
+--   is the fiction; vanilla's own removal covers the doorstep, and the
 --   cabins are remote enough that little else is nearby to begin with.
 --
 -- Session 10 measured the ceiling any such buffer could have had: 72 tiles, and
@@ -972,7 +972,7 @@ local function anchorSquare(playerObj, square)
 
     if not isWaterSquare(centre) then return centre end
 
-    -- Only reachable through a custom coordinate, since all twelve cabins are
+    -- Only reachable through a custom coordinate, since every cabin is
     -- on dry land. There is no "leave them there" branch on purpose.
     -- Three passes, best first. One pass was not enough, and the obvious second
     -- one was not either. Both measured live in session 9, starting at

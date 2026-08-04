@@ -21,12 +21,19 @@ local REGION_NAME = "Remote Cabin"
 -- site: each is the standable, in-a-room tile nearest the middle of the building
 -- so the player wakes up in the room instead of pressed against a wall.
 --
--- All twelve are in the mod, hand-picked by Rob (session 7). The spread is
+-- Every one is in the mod, hand-picked by Rob (sessions 7 and 10). The spread is
 -- deliberate and not an oversight waiting to be tidied: the buildings run from a
--- 3x3 shed to a 20x11 farmhouse, and the straight-line haul to the nearest town
+-- one-room cabin to a 20x11 farmhouse, and the straight-line haul to the town
 -- runs 610 tiles (#9, Riverside) to 2383 (#7, Brandenburg), so a random draw
 -- varies how hard the start is. Do not cut the list back to the ones that look
 -- most cabin-like.
+--
+-- 1-12 were measured live as interior squares. 13-17 came off the map site in
+-- session 10 and have not had that treatment, so each is the coordinate Rob
+-- picked rather than a verified in-a-room tile. The spawn code copes either way:
+-- a coordinate that lands outside the building still gets its well, generator
+-- and cabin key, because those measure from the nearest building rather than
+-- from the player.
 local CABINS = {
     { posX = 12473, posY = 8919, posZ = 0 },  -- 1: 8x8, 2 rooms
     { posX = 12719, posY = 8749, posZ = 0 },  -- 2: 13x9, 7 rooms
@@ -39,8 +46,23 @@ local CABINS = {
     { posX = 6484,  posY = 6171, posZ = 0 },  -- 9: 6x7, 1 room
     { posX = 8081,  posY = 7621, posZ = 0 },  -- 10: 10x9, 5 rooms
     { posX = 9505,  posY = 6608, posZ = 0 },  -- 11: 6x6, 2 rooms (army storage)
-    { posX = 14050, posY = 5195, posZ = 0 },  -- 12: 3x3, 1 room (shed)
+    { posX = 14070, posY = 5203, posZ = 0 },  -- 12: the cabin at this site
+                                              --     (14050,5195 was its shed)
+    { posX = 3818,  posY = 12538, posZ = 0 }, -- 13: far south-west
+    { posX = 8059,  posY = 7620, posZ = 0 },  -- 14: 22 tiles west of #10, see below
+    { posX = 10208, posY = 6799, posZ = 0 },  -- 15
+    { posX = 11242, posY = 8952, posZ = 0 },  -- 16
+    { posX = 6392,  posY = 5900, posZ = 0 },  -- 17
 }
+
+-- #14 sits 22 tiles from #10, which is further apart than the widest building in
+-- this list, so it is kept as its own entry rather than folded in. If it turns
+-- out to be the same property from a different corner, the only cost is that
+-- that property draws twice as often as the others.
+--
+-- Three of the coordinates Rob supplied in session 10 were already here and were
+-- not added again: 9049,8732 is #5, 13631,7222 is #3, and 6482,6168 is #9, each
+-- within three tiles of the entry already in the list.
 
 -- Exported for the client-side screen hook, which has to name the same region
 -- to find its row on the Starting Location list. Read lazily over there, inside
@@ -147,12 +169,12 @@ local function pointEveryProfessionAt(points, list)
     end
 end
 
---- Send the region to a single custom point, or back to the twelve cabins.
+--- Send the region to a single custom point, or back to the cabin list.
 ---
 --- Called on every pass rather than only when a point is set. The region table
 --- is long-lived and the screen can be backed out of and re-entered, so a
 --- coordinate typed once and then cleared would otherwise stay live in the
---- frozen table and quietly override the twelve on a later character. That is
+--- frozen table and quietly override the list on a later character. That is
 --- the failure the pre-flight review described as "the kind of bug that shows
 --- up once, months later, and looks like the mod is haunted".
 function HFTH_SpawnRegion.setCustomPoint(region, point)

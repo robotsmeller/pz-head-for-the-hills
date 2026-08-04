@@ -67,17 +67,17 @@ function SandboxOptionsScreen:setSandboxVars()
 
 	-- Applied on every pass, including when nothing was typed. The region table
 	-- outlives this screen, so a coordinate entered once and later cleared would
-	-- otherwise stay live and override the twelve cabins on a following
-	-- character. setCustomPoint(nil) puts the twelve back.
+	-- otherwise stay live and override the cabin list on a following
+	-- character. setCustomPoint(nil) puts the list back.
 	HFTH_SpawnRegion.setCustomPoint(region, point)
 
 	if point then
 		print(string.format(
-			"[HeadForTheHills] starting at custom point %d,%d instead of the twelve cabins",
+			"[HeadForTheHills] starting at custom point %d,%d instead of the cabin list",
 			point.posX, point.posY))
 	elseif reason ~= "empty" then
 		print(string.format(
-			"[HeadForTheHills] could not read custom start coordinate %q (%s); using the twelve cabins",
+			"[HeadForTheHills] could not read custom start coordinate %q (%s); using the cabin list",
 			tostring(typed), tostring(reason)))
 	end
 end

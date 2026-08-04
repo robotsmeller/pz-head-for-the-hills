@@ -13,7 +13,7 @@
 -- 2. THE CAMERA LIES. The same branch leaves item.zoomX nil, so render skips
 --    the transitionTo at line 728 and falls to the elseif at 729-734, which
 --    flies to region.points.unemployed[1]. That is always CABINS[1] at
---    12473,8919. The player gets a random one of the twelve, so picking Remote
+--    12473,8919. The player gets a random one of the list, so picking Remote
 --    Cabin can show a spot near Louisville and then drop them in the 3x3 shed
 --    at 14050,5195, about 4,000 tiles away.
 --
@@ -21,7 +21,7 @@
 -- is not: the cabin is drawn at spawn, so no single point on that map is the
 -- truth, and any point we fly to is a guess presented as an answer. So the
 -- camera is left alone and the description says outright that the map cannot
--- show it. If the region ever gains map markers, showing all twelve would be
+-- show it. If the region ever gains map markers, showing all of them would be
 -- the better answer.
 --
 -- WRAPPING create() IS NOT NEEDED. Neither fix adds a control, and both target
