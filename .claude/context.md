@@ -1,75 +1,70 @@
 ---
-session: 8
+session: 9
 last_updated: 2026-08-04
-continue_with: "#11 first - the bug-fix commit (blank description + lying map camera, ~2h, zero open questions). Then #12, which needs Rob's two design calls before any UI is written."
-blockers: "#12 needs Rob on two questions: warning vs guard for a water coordinate, and text field vs click-to-drop-a-pin. #3 is a design decision, not code. #7 is MP-only and untestable solo. tests/verify_well.py and _pilot.py's snapshot/restore have never run live - PZ must be ticking, which means Rob at the keyboard."
+continue_with: "#12 is built but never run live. Start the game, put 9668,8775 in the Custom Start Coordinate box, pick Remote Cabin, and check you wake at cabin #4. Then try a coordinate in a river and check it walks you to dry land. Close #12 when both hold."
+blockers: "#12's remaining checks all run through the main menu, which a harness registering on OnGameStart cannot reach - Rob has to look. #3 is a design decision, not code. #7 is MP-only and untestable solo. PZ stops ticking whenever it loses focus, so every live test needs Rob sitting in the game window."
 ---
 
 # Head for the Hills! - Project State
 
 ## What exists
 
-- `mod/42/media/sandbox-options.txt` - 11 options, `StartingVehicle` and `StartingEquipmentList` declared `type = string`.
-- `mod/42/media/lua/client/HeadForTheHills/SandboxPickers.lua` - live vehicle dropdown + searchable equipment multi-select. The wrap-a-vanilla-screen idiom this project reuses.
-- `mod/42/media/lua/shared/HeadForTheHills/SpawnScenario.lua` - everything placed at `OnNewGame`. All branches now verified live, including the well's skip-existing branch (session 7, cabin #4).
-- `mod/42/media/lua/shared/HeadForTheHills/SpawnRegion.lua` - the "Remote Cabin" starting location, via `OnSpawnRegionsLoaded`. All twelve cabins are Rob's deliberate picks and are **final**.
-- `tests/` - `_pilot.py` (shared plumbing: `payload()` never `result["result"]`, `teleport()` for every hop, and `snapshot_options()`/`restore_options()` so a destructive test puts the sandbox vars back), `api_checks.py`, `survey_candidates.py`, `verify_generator.py`, `verify_placement.py`, `verify_equipment.py`, `verify_spawn_region.py`, `verify_well.py`.
-- Deployed to `Zomboid/mods/HeadForTheHills` as a directory junction following the checked-out branch. PZ must be quit **to desktop** to reload changed Lua.
-- 4 open issues: #3, #7, #11, #12. No open PRs.
+- `mod/42/media/sandbox-options.txt` - 12 options. `CustomSpawnPoint`, `StartingVehicle` and `StartingEquipmentList` are `type = string`.
+- `mod/42/media/lua/client/HeadForTheHills/SandboxPickers.lua` - live vehicle dropdown + searchable equipment multi-select.
+- `mod/42/media/lua/client/HeadForTheHills/SpawnSelectScreen.lua` - fills the Remote Cabin description and stops the camera flying to cabin #1. Wraps `fillList` and `render` directly; `create()` needs no hook.
+- `mod/42/media/lua/client/HeadForTheHills/CustomSpawnPoint.lua` - **new, session 8.** Applies a typed coordinate by wrapping `SandboxOptionsScreen:setSandboxVars`.
+- `mod/42/media/lua/shared/HeadForTheHills/SpawnRegion.lua` - the "Remote Cabin" starting location, plus `parsePoint` / `setCustomPoint` / `hasCustomPoint`, exported on `HFTH_SpawnRegion`.
+- `mod/42/media/lua/shared/HeadForTheHills/SpawnScenario.lua` - everything placed at `OnNewGame`, now around an **anchor square** passed in rather than re-read from the player. Water rescue included.
+- `tests/` - `_pilot.py` (use `payload()`, and its `teleport()` for every hop), `api_checks.py`, `survey_candidates.py`, `verify_generator.py`, `verify_placement.py`, `verify_equipment.py`, `verify_spawn_region.py`, `verify_spawn_screen.py`, `verify_well.py`, `verify_custom_spawn.py`.
+- Deployed to `Zomboid/mods/HeadForTheHills` as a directory junction. PZ must be quit **to desktop** to reload changed Lua.
+- 3 open issues: #3, #7, #12. No open PRs.
 
 ## What is decided
 
 - Start-scenario mod, not a mechanics overhaul. Reuse existing map buildings; no TileZed until v2.
-- **All twelve cabins stay.** Rob picked them specifically. The spread is the point: 3x3 shed to 20x11 farmhouse, 610 to 2383 tiles from the nearest town. Do not propose trimming.
-- Live pickers instead of hardcoded lists, because enum dropdowns are parsed before mod Lua runs.
-- Placement rules are Rob's spec. `BUILDING_CLEARANCE = 3`, `VEHICLE_BUILDING_CLEARANCE = 2`.
-- Do not start a generator inside `OnNewGame`; re-apply on a later `OnTick`.
-- Starting equipment skips anything the player already carries.
-- Tests identify the mod's vehicle by key, never by proximity.
-- **Custom coordinates are a `clickNext` mutation, not a sandbox option** (#12). Verified from vanilla source in session 7: starting location is chosen *before* sandbox options, `SandboxVars` is only populated on the sandbox screen's PLAY button, and `CharacterCreationProfession.initWorld:1086` reads the exact region object frozen at `MapSpawnSelect:clickNext:644`. A sandbox option and an `OnTick` teleport are both ruled out - see #12, do not revisit.
-- **`MapSpawnSelect:createChildren` does not exist.** Wrap `create()` at line 923. The missing method resolves to a no-op stub, so wrapping it loads clean and does nothing visible.
+- **All twelve cabins stay.** Rob picked them. Do not propose trimming.
+- **Custom coordinates are a sandbox option, applied at `setSandboxVars`** (#12). The session-7 note calling a sandbox option impossible measured the wrong moment: nothing builds the point list from the option. `clickNext:644` freezes a live reference to our region table, `SandboxOptions.lua:972` fills `SandboxVars`, and `initWorld:1086` reads that same table afterwards. Overwriting the points in between redirects the spawn, so **no control goes on the map screen** - Rob does not want to click the map.
+- **Never wrap a function that was captured by value.** `Events.OnInitWorld.Add(CharacterCreationProfession.initWorld)` at `CharacterCreationProfession.lua:1562` and the PLAY button at `SandboxOptions.lua:422` both hold the function, not the field. A wrap on either loads clean and does nothing. Same family as `MapSpawnSelect:createChildren`, which does not exist at all.
+- **Placement takes an anchor square, not the player.** "Who is spawning" and "what are we building around" are different questions. Coordinates update instantly on `teleportTo` but `getCurrentSquare()` lags about a second, so re-reading the player mid-rescue built around the water we just left.
+- **A coordinate in water always moves the player to dry land.** No branch leaves them there. Rob: "nobody ever wants to start in the water."
 - All public-facing copy runs through `/avoid-ai-writing`. No AI-attribution trailer in commits, ever.
 
 ## What is pending
 
-- **#11 (do first).** Blank description panel + a map camera that flies to cabin #1 no matter which of the twelve you get, up to ~4,000 tiles wrong. Both live in shipped code, both verified against vanilla source, zero open questions, ~2h. Uses the same two hooks #12 needs, and repairs the feedback channel #12 depends on.
-- **#12 (needs Rob).** Mechanism is settled; the two design questions are not.
+- **#12 (needs Rob at the keyboard).** Built and committed, never run live. Typing a coordinate and waking there, and the water rescue, both need the main menu.
 - **#3 (needs Rob).** Trait/occupation default loadout alongside the picker.
 - **#7.** MP: `ServerSettingsScreen` not hooked.
-- **Uncommitted at handoff:** nothing - `tests/verify_well.py` and `_pilot.py`'s snapshot/restore shipped unverified. Run `python tests/verify_well.py --at 9668,8775` with PZ ticking before trusting either.
-- **Open questions the review left for Claude** (all cheap, all in #12's thread): does `fillList` re-run on screen re-entry or is it cached; is `MapSpawnSelect.instance` rebuilt or reused on a second pass; does `Events.OnSpawnRegionsLoaded` stack listeners across `ResetLua`.
-- Sibling repo: `rob-kingsbury/pz-test-pilot` #1 (false `harness_dead`), #2 (teleport moves nothing), **#3 (a timed-out command stays queued and fires whenever the game next ticks, filed session 7)**.
+- Sibling repo `rob-kingsbury/pz-test-pilot`: #1 (false `harness_dead`), #2 (teleport moves nothing), #3 (queued command fires on tab-back). **#3's write-up is wrong and worth correcting:** `send_command` *does* clean up on `CommandTimeout` (`_ipc.py:179-181`). The leak is the `HarnessDead` path at `_ipc.py:167-171`, which raises with no cleanup. The heartbeat trips at 6s and the timeout is 30s, so `HarnessDead` wins that race and the leak fires on nearly every failed command.
 
 ## Recent sessions
 
+### Session 8 (2026-08-04): #11 shipped and closed, #12 built, a wrong ruling overturned
+Closed #11: description panel and camera both fixed and confirmed on screen by Rob. Verified the well's skip-existing branch live at cabin #4, which finally ran `verify_well.py` and `_pilot.py`'s snapshot/restore for the first time; both passed. Then Rob proposed a sandbox setting for custom coordinates, which the project had ruled out. Reading the source showed the ruling measured the wrong moment and he was right, so #12 shipped as a sandbox option with no map UI at all - deleting the joypad patch, `isClient()` hiding, pin rendering and click handling the old plan carried. A first-principles reminder mid-build replaced a teleport-then-wait workaround with passing an anchor square, removing the timing bug instead of pacing around it. The parser needed no game, so it was run against the real shipped code offline: 15 coordinate shapes, all correct. **PZ burned full CPU for 45 minutes with a frozen heartbeat**, so `harness_dead` is not always the false positive CLAUDE.md implies.
+
 ### Session 7 (2026-08-04): Cabin list finalised, two wrong designs killed by reading source
-Closed #1: Rob picked all twelve cabins deliberately, so the comment calling the list provisional was corrected rather than the list trimmed. Verified the well's skip-existing branch live at cabin #4, the last untested branch that was reachable. Then two designs for user-entered coordinates died in a row, both by reading vanilla source rather than guessing: a sandbox option cannot work because starting location is chosen before sandbox options, and the replacement plan wrapped `MapSpawnSelect:createChildren`, which does not exist on that class and would have shipped a file that loads clean and does nothing. A three-reviewer pre-flight found the real mechanism - `clickNext` freezes a region reference that `initWorld` reads later - and two live defects on that screen, filed as #11. Filed pz-test-pilot#3 after a timed-out teleport sat queued in `command.txt` and would have fired on tab-back. Corrected a self-contradiction in CLAUDE.md where the tooling table still claimed `teleport` moves the player before throwing.
+Closed #1: all twelve cabins are deliberate, so the comment calling the list provisional was corrected rather than the list trimmed. Verified the well's skip-existing branch design. Two designs for user-entered coordinates died by reading vanilla source. A three-reviewer pre-flight found the `clickNext` mechanism and two live defects, filed as #11. Filed pz-test-pilot#3.
 
 ### Session 6 (2026-08-04): Starting Location shipped, ID card fixed, three test defects
-Closed #10, #9 and #2. The teleport guard earned itself immediately: pz-test-pilot's `teleport` never moves the player at all, and `setX`/`setY` reads back correct then snaps back because nothing streams the destination chunk. `teleportTo` works. Built `SpawnRegion.lua` and verified it live end to end - Rob woke inside cabin #2 carrying exactly one ID card. `verify_placement.py` reported PASS on a spawn that placed nothing; fixed, along with a scan that read unloaded squares as empty.
-
-### Session 5 (2026-08-04): PR #8 verified live and merged
-Drove PR #8 through a fresh world and a confirmed reload. Fresh-spawn generator came back fuelled, connected and running; well, generator and vehicle all landed on dirt or grass, clear of the building and dry; all three survived a save/reload. Fixed three test defects found by running them. Merged PR #8, closed #6, filed #10.
+Closed #10, #9 and #2. `teleportTo` works where `teleport` and `setX`/`setY` do not. Built `SpawnRegion.lua` and verified it live. Fixed `verify_placement.py` reporting PASS on a spawn that placed nothing, and a scan reading unloaded squares as empty.
 
 ## To Resume
 
 Paste into a fresh window:
 
-> Continuing Head for the Hills (PZ B42.20 start-scenario mod) at `c:\xampp\htdocs\pz-head-for-the-hills`, session 8. On `main` at the session-7 handoff commit, tree clean. 4 open issues (#3 #7 #11 #12), no open PRs. The mod works end to end: pick "Remote Cabin" and you wake in a cabin with a car, a well and a running generator.
+> Continuing Head for the Hills (PZ B42.20 start-scenario mod) at `c:\xampp\htdocs\pz-head-for-the-hills`, session 9. On `main` at e772ffd, tree clean. 3 open issues (#3 #7 #12), no open PRs. The mod works end to end: pick "Remote Cabin" and you wake in a cabin with a car, a well and a running generator.
 >
 > THIS WINDOW:
-> 1. **#11 first.** The bug-fix commit: Remote Cabin's description panel renders blank, and the map camera flies to cabin #1 regardless of which of the twelve you actually get. Both verified against vanilla source, zero open questions, ~2h. Wrap `MapSpawnSelect:create()` at line 923 - **not `createChildren`, which does not exist on that class.**
-> 2. **#12 needs Rob's two design calls** before any UI: warning vs explicit guard for a coordinate in water, and text field vs click-to-drop-a-pin. The mechanism is settled and written up in the issue; a sandbox option and an `OnTick` teleport are both ruled out, do not revisit them.
-> 3. **Cheap and unclaimed:** `python tests/verify_well.py --at 9668,8775` - it shipped unverified because PZ was not ticking at handoff.
-> 4. **#3 and #7** only if Rob wants them.
+> 1. **#12 is built but never run live.** Start the game, put `9668,8775` in the **Custom Start Coordinate** sandbox box, pick Remote Cabin, and check you wake at cabin #4. Then try a coordinate in a river and check it walks you to dry land. Close #12 when both hold.
+> 2. **Also worth a live pass:** `python tests/verify_custom_spawn.py` covers the parser and the redirect in a loaded world, and `SpawnScenario.lua`'s three placement functions changed signature this session, so re-run `verify_placement.py` on a fresh spawn.
+> 3. **#3 and #7** only if Rob wants them.
 >
-> Live testing: quit PZ **to desktop** before testing changed Lua. Drive with `tests/_pilot.py`'s helpers. **The game stops ticking when PZ loses focus**, so `harness_dead` while Rob is tabbed away is a false positive - read `Zomboid/Lua/TestPilot/result.txt` and `log.txt` first. **After any failed command, delete `command.txt` and `command_ready.txt`** from that directory, or it fires when the window regains focus (pz-test-pilot#3).
+> Live testing: quit PZ **to desktop** before testing changed Lua. Drive with `tests/_pilot.py`'s helpers. **PZ stops ticking when it loses focus**, so Rob has to be sitting in the game window - but session 8 saw PZ burn full CPU with a frozen heartbeat for 45 minutes, so check `status.txt`'s timestamp rather than assuming a false positive. **After any failed command, delete `command.txt` and `command_ready.txt`** from `Zomboid/Lua/TestPilot/`.
 
 ## Reference
 
 | File | Purpose |
 |------|---------|
-| `CLAUDE.md` | Project rules + hard-won B42 facts (teleportTo vs setX/setY, unstreamed squares reading as nil, generator startup at world init, ground/water tile tests, `isDoor` stack-dump spam, wells as entities, `StartMonth`, ghost vehicles, `getFileWriter` whitelist, harness result shape and its queued-command hazard, vanilla's spawn ID card, `haveThisKeyId` return type, `getCell():getVehicles()`) |
+| `CLAUDE.md` | Project rules + hard-won B42 facts |
 | `.claude/rules/development-workflow.md` | Git, commit, workflow rules |
 | `mod/` | The actual PZ mod (root `mod.info` + `42/`) |
 | `tests/_pilot.py` | Shared harness plumbing for every test script |
