@@ -298,6 +298,19 @@ end
 
 -- --------------------------------------------------------------- equipment ---
 
+--- Is the player already carrying one of these, anywhere on them?
+--- Recursive, so an item inside a starting bag counts: the question is whether
+--- they already have one, not whether it is in the main inventory.
+--- containsTypeRecurse compares the *full* type, verified live on B42.20 - a
+--- carried Base.IDcard answers false to "NotAMod.IDcard" - so the equipment
+--- list's full names can go straight in without splitting off the module.
+--- Field-tested rather than pcall'd, because a missing method on B42 throws and
+--- dumps a Java stack trace even when the pcall catches it.
+local function alreadyCarrying(inventory, fullName)
+    if not inventory.containsTypeRecurse then return false end
+    return inventory:containsTypeRecurse(fullName) == true
+end
+
 local function giveStartingEquipment(playerObj, opts)
     if not opts.SpawnStartingEquipment then return end
     local list = opts.StartingEquipmentList
@@ -312,12 +325,24 @@ local function giveStartingEquipment(playerObj, opts)
         -- the same thing twice reads as a bug either way.
         if not issued[fullName] then
             issued[fullName] = true
-            -- A chosen item can vanish if the mod that supplied it was removed
-            -- between world creation and this spawn, so never let one bad entry
-            -- abort the rest of the loadout.
-            local ok = pcall(function() inventory:AddItem(fullName) end)
-            if not ok then
-                print("[HeadForTheHills] could not add starting item: " .. tostring(fullName))
+            -- Something else may have granted it already. Vanilla's own
+            -- OnNewGame handler gives every character an ID card
+            -- unconditionally (shared/Items/SpawnItems.lua), plus a badge to a
+            -- ranger, police officer or firefighter and a pager to a doctor,
+            -- and vanilla Lua loads before mod Lua so it always runs first.
+            -- Another mod's loadout collides the same way. Skipping is general
+            -- rather than ID-card specific for exactly that reason.
+            if alreadyCarrying(inventory, fullName) then
+                print("[HeadForTheHills] already carrying " .. tostring(fullName)
+                      .. "; not issuing a second one")
+            else
+                -- A chosen item can vanish if the mod that supplied it was
+                -- removed between world creation and this spawn, so never let
+                -- one bad entry abort the rest of the loadout.
+                local ok = pcall(function() inventory:AddItem(fullName) end)
+                if not ok then
+                    print("[HeadForTheHills] could not add starting item: " .. tostring(fullName))
+                end
             end
         end
     end
