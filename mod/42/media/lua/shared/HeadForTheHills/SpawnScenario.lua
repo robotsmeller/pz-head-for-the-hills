@@ -4,14 +4,23 @@
 -- vehicle, starting equipment, a well and generator on the property if the
 -- cabin lacks them, and the starting season.
 --
--- MULTIPLAYER: this file guards on `isClient()` and lives in shared/, the same
--- shape vanilla uses for server/Map/MapObjects/MOGenerator.lua and
--- shared/Items/SpawnItems.lua. The singleplayer host and a dedicated server run
--- it; MP clients return immediately so world objects are created once, by the
--- authority, rather than once per connected player. Spawned generators call
+-- MULTIPLAYER: the guard is per job, not per file, because the two halves of
+-- this mod belong to different machines.
+--
+-- World objects (vehicle, well, generator) and the clock are the authority's:
+-- created once by the singleplayer host or the dedicated server, rather than
+-- once per connected player. That is the shape vanilla uses in
+-- server/Map/MapObjects/MOGenerator.lua, and spawned objects call
 -- transmitCompleteItemToClients() so remote clients see them.
-
-if isClient() then return end
+--
+-- Inventory (starting equipment, cabin key) is not. Vanilla grants a new
+-- character's items in shared/Items/SpawnItems.lua with no isClient() guard at
+-- all, so this follows suit and runs on every machine. An earlier file-level
+-- guard here meant a connected client got no equipment and no key.
+--
+-- Both grants are already idempotent: giveStartingEquipment skips anything the
+-- player carries, and giveCabinKey checks haveThisKeyId first. So if the event
+-- fires on both the client and the server, nobody ends up with two.
 
 local FALLBACK_VEHICLE = "Base.PickUpTruck"
 local GENERATOR_ITEM = "Base.Generator"
@@ -23,6 +32,29 @@ local GENERATOR_ITEM = "Base.Generator"
 -- map pack ships a well on a different sprite.
 local WELL_SPRITES = { ["camping_01_16"] = true }
 local WELL_SPRITE = "camping_01_16"
+
+-- What that sprite's entity script is allowed to be called. Everything this mod
+-- places has to be base-game content: a player who installs this should not end
+-- up with objects that only exist because of some other mod they happen to run.
+-- Lowercased for comparison, and both the qualified and bare forms are accepted
+-- because it is not yet measured which one B42 answers with.
+local VANILLA_WELL_SCRIPTS = { ["base.well"] = true, ["well"] = true }
+
+--- The name of an entity script, or nil if it will not say.
+--- Field-tested across three getters rather than picking one, because the right
+--- one has not been measured on B42 and calling a method that does not exist
+--- throws past pcall and dumps a Java stack trace for every attempt.
+local function entityScriptName(script)
+    for _, getter in ipairs({ "getFullName", "getName", "getType" }) do
+        if script[getter] then
+            local ok, value = pcall(function() return script[getter](script) end)
+            if ok and type(value) == "string" and value ~= "" then
+                return value
+            end
+        end
+    end
+    return nil
+end
 
 -- Search limits, in tiles, from the player's spawn square. The player starts
 -- inside the cabin, so every placement has to walk out of the building first.
@@ -789,6 +821,24 @@ local function spawnWell(playerObj, opts, centre, ctx)
             error("no entity script for sprite " .. WELL_SPRITE, 0)
         end
 
+        -- What this mod places has to be base-game content, never something it
+        -- inherited from whatever else the player has installed. The sprite is
+        -- vanilla's own, so a mod adding its *own* well on its *own* sprite is
+        -- already excluded and never reaches here. The one way through is a mod
+        -- that re-points this sprite's script, and this is what catches that.
+        --
+        -- Nameless means undecidable rather than wrong: if none of the getters
+        -- answer, the well still gets built. Refusing on a question we could not
+        -- ask would trade a working water source for a guess.
+        local name = entityScriptName(script)
+        if name and not VANILLA_WELL_SCRIPTS[string.lower(name)] then
+            error(string.format(
+                "sprite %s resolves to entity %q, not the base game's well; "
+                .. "another mod has replaced it and this mod only places "
+                .. "base-game objects", WELL_SPRITE, name), 0)
+        end
+        print("[HeadForTheHills] well entity script: " .. (name or "unnamed"))
+
         local well = IsoThumpable.new(getWorld():getCell(), square, WELL_SPRITE, false)
         well:setName("Well")
         well:setCanPassThrough(false)
@@ -1035,10 +1085,17 @@ local function anchorSquare(playerObj, square)
     return nil
 end
 
-local function runSpawn(playerObj, opts, centre)
-    applySeason(opts)
+--- The half that runs on every machine, client included: this player's own
+--- inventory. Both grants skip what the player already carries, so firing on
+--- the client and the server both is harmless.
+local function giveInventory(playerObj, opts, centre)
     giveStartingEquipment(playerObj, opts)
     giveCabinKey(playerObj, centre)
+end
+
+local function runSpawn(playerObj, opts, centre)
+    applySeason(opts)
+    giveInventory(playerObj, opts, centre)
     spawnStartingVehicle(playerObj, opts, centre)
 
     -- Where the buildings and the water are, read once. The well and the
@@ -1052,6 +1109,20 @@ end
 local function onNewGame(playerObj, square)
     local opts = options()
     if not opts or not playerObj then return end
+
+    -- A connected client stops here. It hands over the equipment and the key,
+    -- which are its own player's inventory, and leaves the world to the server:
+    -- the vehicle, the well, the generator, the clock and the water rescue are
+    -- all things that must happen once rather than once per player.
+    if isClient() then
+        local centre = playerObj:getCurrentSquare() or square
+        if centre then
+            giveInventory(playerObj, opts, centre)
+        else
+            print("[HeadForTheHills] client spawn square has not loaded; no key issued")
+        end
+        return
+    end
 
     local centre = anchorSquare(playerObj, square)
     if not centre then
