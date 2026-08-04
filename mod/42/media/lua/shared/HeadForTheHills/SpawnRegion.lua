@@ -42,6 +42,15 @@ local CABINS = {
     { posX = 14050, posY = 5195, posZ = 0 },  -- 12: 3x3, 1 room (shed)
 }
 
+-- Exported for the client-side screen hook, which has to name the same region
+-- to find its row on the Starting Location list. Read lazily over there, inside
+-- the wrapped methods, so the order shared and client Lua load in does not
+-- matter and neither file has to hold a second copy of the name.
+HFTH_SpawnRegion = {
+    NAME = REGION_NAME,
+    CABINS = CABINS,
+}
+
 --- Every profession key the game might look this region up by.
 --- Vanilla's per-town spawnpoints.lua keys its point lists by profession, so a
 --- region that only defines one key sends everyone else somewhere else. Vanilla's
@@ -85,16 +94,25 @@ local function buildPoints()
     return points
 end
 
+--- True when `regions` already holds an entry under this name.
+local function hasRegion(regions, name)
+    for _, region in ipairs(regions) do
+        if region.name == name then return true end
+    end
+    return false
+end
+
 local function onSpawnRegionsLoaded(regions)
     if not regions then return end
 
     -- MapSpawnSelect calls getSpawnRegions() several times while the screen is
-    -- open and each call fires this event, so refuse to add a second copy.
-    for _, region in ipairs(regions) do
-        if region.name == REGION_NAME then return end
+    -- open and each call fires this event, so refuse to add a second copy. The
+    -- guard skips the one region rather than returning out of the handler: it
+    -- behaves identically while this file adds a single entry, and does not
+    -- quietly swallow a second one added alongside it later.
+    if not hasRegion(regions, REGION_NAME) then
+        table.insert(regions, { name = REGION_NAME, points = buildPoints() })
     end
-
-    table.insert(regions, { name = REGION_NAME, points = buildPoints() })
 end
 
 Events.OnSpawnRegionsLoaded.Add(onSpawnRegionsLoaded)

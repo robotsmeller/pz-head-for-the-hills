@@ -1,0 +1,5 @@
+UI_EN = {
+
+	UI_HeadForTheHills_RemoteCabin_desc = "You wake up in one of twelve remote cabins, drawn at random when the game starts. By default each has a vehicle outside, a well, a generator, and ground around it that starts clear of zombies. The sandbox options change all of that. <LINE> <LINE> The twelve are spread right across the map, and the nearest town is anywhere from about 600 tiles away to about 2,400. Which one you draw decides how isolated you start. The map will not show it in advance.",
+
+}
