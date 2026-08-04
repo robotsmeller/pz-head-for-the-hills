@@ -5,3 +5,8 @@ Thumbs.db
 __pycache__/
 *.pyc
 .claude/afk-log.md
+
+# Collab audit / plan review output. Working notes, and this repo is public.
+# Globbed: the run also drops plan-review.reviews.md alongside the report.
+plan-review*.md
+audit-report*.md
