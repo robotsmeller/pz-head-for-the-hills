@@ -35,7 +35,7 @@ blockers: "PR #8 is unverified in a live game. #2 is blocked on #1."
 - **#6.** Existing-generator branch passed live. Fresh-spawn branch is what PR #8 fixes and what verification closes.
 - **#1.** Run `python tests/survey_candidates.py` in a throwaway world, then apply judgement on drive time to town. The result-shape bug that would have scored all 12 OUT is fixed.
 - **#2.** Blocked on #1: the region needs real cabin coordinates.
-- **#9.** Two ID cards at spawn. Vanilla issues none at spawn and the picker cannot emit a duplicate, so it is likely two distinct ID-card items selected. `verify_placement.py` prints the saved list as its first output.
+- **#9. Diagnosed (session 5), fix not written.** Vanilla is the second card: `SpawnItems.lua` grants `Base.IDcard` to every new character unconditionally, so the mod granting one too makes two. The earlier note here that "vanilla issues none at spawn" was wrong. The picker is fine - it keys selection by full name and cannot emit a duplicate. Fix is a skip-if-already-carried guard on the equipment loop in `SpawnScenario.lua`, general rather than ID-card specific, since `Base.Passport` and anything another mod grants at spawn collide the same way.
 - **#7.** MP: `ServerSettingsScreen` not hooked.
 - **#3.** Whether a trait/occupation default loadout is wanted alongside the picker.
 - Sibling repo: `rob-kingsbury/pz-test-pilot#1` filed for the false `harness_dead`.
