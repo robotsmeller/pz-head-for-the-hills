@@ -32,7 +32,8 @@ from _ipc import send_command, CommandTimeout, HarnessDead   # noqa: E402
 
 __all__ = [
     "load", "send_command", "run_lua", "payload", "flatten", "parse",
-    "num", "boolean", "teleport", "CELL_LOAD_SECONDS", "TELEPORT_TOLERANCE",
+    "num", "boolean", "teleport", "snapshot_options", "restore_options",
+    "CELL_LOAD_SECONDS", "TELEPORT_TOLERANCE",
     "CommandTimeout", "HarnessDead", "HarnessError",
 ]
 
@@ -200,3 +201,67 @@ def teleport(cfg, at, settle=CELL_LOAD_SECONDS, tolerance=TELEPORT_TOLERANCE):
             f"{drift} tiles away; this would measure the wrong place")
     print(f"  player at {px},{py}")
     return px, py
+
+
+# A test that re-fires OnNewGame has to arm the sandbox vars first, and the
+# arming is a write to whatever save happens to be loaded. verify_generator.py
+# tells you in its docstring to only run it in a throwaway world, which is a
+# rule a person has to remember at the wrong moment. These two turn that into
+# something the test does for itself.
+DUMP_OPTIONS_LUA = """
+local sv = SandboxVars and SandboxVars.HeadForTheHills
+if not sv then return "NOOPTIONS" end
+local keys = {}
+for k in pairs(sv) do table.insert(keys, k) end
+table.sort(keys)
+local out = {}
+for _, k in ipairs(keys) do table.insert(out, k .. "=" .. tostring(sv[k])) end
+return table.concat(out, " | ")
+"""
+
+
+def _lua_literal(text):
+    """A dumped value as Lua source: booleans and numbers bare, the rest quoted."""
+    if text in ("true", "false", "nil"):
+        return text
+    try:
+        float(text)
+        return text
+    except ValueError:
+        return '"%s"' % text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def snapshot_options(cfg):
+    """Every HeadForTheHills sandbox var as a dict, for restore_options."""
+    fields = parse(run_lua(cfg, DUMP_OPTIONS_LUA))
+    if "_raw" in fields:
+        raise HarnessError(
+            "could not read SandboxVars.HeadForTheHills (got "
+            f"{fields['_raw']!r}); the mod may not be loaded in this save")
+    return fields
+
+
+def restore_options(cfg, snapshot):
+    """Put a snapshot back, then read it again and prove it took.
+
+    Verifying the write matters more here than it looks: this runs at the end
+    of a destructive test, which is exactly when nobody is watching the output.
+    A silent failure would leave someone's save rewritten.
+    """
+    assignments = " ".join(
+        "sv.%s = %s" % (key, _lua_literal(value))
+        for key, value in snapshot.items())
+    lua = ("local sv = SandboxVars and SandboxVars.HeadForTheHills "
+           "if not sv then return \"NOOPTIONS\" end "
+           "%s return \"restored\"" % assignments)
+    if "restored" not in str(run_lua(cfg, lua)):
+        raise HarnessError("could not restore the sandbox vars")
+
+    after = snapshot_options(cfg)
+    drifted = [k for k, v in snapshot.items() if after.get(k) != v]
+    if drifted:
+        raise HarnessError(
+            "sandbox vars did not come back as they were: "
+            + ", ".join("%s is %s, expected %s" % (k, after.get(k), snapshot[k])
+                        for k in drifted))
+    print("  sandbox vars restored")
