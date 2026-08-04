@@ -625,11 +625,28 @@ local function reapplyWhenSettled(generator, state)
     Events.OnTick.Add(reassertGenerator)
 end
 
---- Detect an existing well or other standing water source.
+-- What a fluid container has to hold to count as a well rather than a barrel.
+--
+-- Measured live at cabin #8 (session 10), which has both: a Fluid_Container_
+-- PumpWell at capacity 20000, and two Rain Collector Barrels at 600, standing
+-- empty. Vanilla's own Base.Well is declared at 10000. Any threshold between
+-- those separates them, and 2000 sits clear of both, so a modded well with a
+-- more modest tank still counts while no rain barrel ever will.
+--
+-- This matters because either barrel alone used to suppress the well entirely.
+-- An empty 600-litre barrel that only fills when it rains is not the water
+-- supply the option promises, and "Spawn Well If Missing" says well, not water.
+local WELL_MIN_CAPACITY = 2000
+
+--- Detect an existing well, so the mod leaves it alone rather than digging a
+--- second one beside it.
+---
 --- Wells are B42 entities with no dedicated Lua class to test with instanceof,
 --- so this checks two things: the exact sprite the Base.Well entity declares,
---- and whether the object carries a FluidContainer at all. The component test is
---- what catches modded wells and pumps, which are free to use their own sprite.
+--- and whether the object carries a FluidContainer big enough to be a well.
+--- The component test is what catches modded wells and pumps, which are free to
+--- use their own sprite - cabin #8's is on camping_01_64, which appears in no
+--- vanilla script at all.
 local function isWaterSource(object)
     local sprite = object:getSprite()
     local name = sprite and sprite:getName()
@@ -638,7 +655,13 @@ local function isWaterSource(object)
     -- Not every IsoObject subclass exposes getFluidContainer, so probe it safely
     -- rather than assuming the method is present on whatever the map placed.
     local ok, container = pcall(function() return object:getFluidContainer() end)
-    return ok and container ~= nil
+    if not ok or container == nil then return false end
+
+    -- Capacity is read the same guarded way: a container from a mod is not
+    -- obliged to expose the getter, and treating an unreadable one as "not a
+    -- well" only risks a second well, which is the cheaper mistake.
+    local okCap, capacity = pcall(function() return container:getCapacity() end)
+    return okCap and type(capacity) == "number" and capacity >= WELL_MIN_CAPACITY
 end
 
 local function hasWellNearby(centre)
