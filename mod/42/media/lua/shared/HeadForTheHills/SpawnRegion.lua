@@ -115,15 +115,18 @@ local function trim(text)
 end
 
 --- Parse "x,y" into a spawn point, or nil plus a short reason.
---- Accepts a comma, a semicolon or plain whitespace between the two numbers,
---- because a coordinate copied off the map site arrives in all three shapes.
+--- Accepts a comma, a semicolon, an x or plain whitespace between the two
+--- numbers, because a coordinate copied off the map site arrives in all of
+--- those shapes. The x matters most: map.projectzomboid.com puts coordinates
+--- in its own URL as "?12462x8938", so that is the form someone pastes without
+--- thinking about it, and rejecting it looks like the feature is broken.
 --- posZ is forced to 0: every cabin in this mod is at ground level, and a
 --- z value typed by hand is a way to spawn inside terrain.
 function HFTH_SpawnRegion.parsePoint(text)
     text = trim(text)
     if text == "" then return nil, "empty" end
 
-    local x, y = string.match(text, "^(%-?%d+)%s*[,;%s]%s*(%-?%d+)$")
+    local x, y = string.match(text, "^(%-?%d+)%s*[,;xX%s]%s*(%-?%d+)$")
     if not x then return nil, "format" end
 
     x, y = tonumber(x), tonumber(y)
