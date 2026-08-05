@@ -27,8 +27,8 @@ Sandbox_EN = {
 	Sandbox_HeadForTheHills_SpawnVehicle = "Spawn Starting Vehicle",
 	Sandbox_HeadForTheHills_SpawnVehicle_tooltip = "Spawn a vehicle near the cabin.",
 
-	Sandbox_HeadForTheHills_StartingVehicle = "Starting Vehicle (vanilla + custom)",
-	Sandbox_HeadForTheHills_StartingVehicle_tooltip = "Which vehicle spawns near the cabin. The dropdown is built live from every vehicle currently loaded, vanilla and custom both, so anything your other mods add is already in it. On a server's settings screen it is a plain text box instead: type a vehicle id, such as Base.PickUpTruck.",
+	Sandbox_HeadForTheHills_StartingVehicle = "Starting Vehicle",
+	Sandbox_HeadForTheHills_StartingVehicle_tooltip = "Which vehicle spawns near the cabin. In single player this is a dropdown built from every vehicle vanilla and your installed mods provide. On a server's settings screen it is a plain text box instead: type a vehicle id, such as Base.PickUpTruck.",
 
 	Sandbox_HeadForTheHills_VehicleCondition = "Starting Vehicle Condition (%)",
 	Sandbox_HeadForTheHills_VehicleCondition_tooltip = "Overall condition of the starting vehicle, if one is spawned.",
@@ -39,6 +39,6 @@ Sandbox_EN = {
 	Sandbox_HeadForTheHills_SpawnStartingEquipment = "Add Custom Starting Equipment",
 	Sandbox_HeadForTheHills_SpawnStartingEquipment_tooltip = "Add the items chosen below to your starting inventory, on top of your normal trait/occupation loadout.",
 
-	Sandbox_HeadForTheHills_StartingEquipmentList = "Starting Equipment (vanilla + custom)",
-	Sandbox_HeadForTheHills_StartingEquipmentList_tooltip = "What you wake up carrying. The list is built live from every item currently loaded, vanilla and custom both, so anything your other mods add is already in it. Type to search. On a server's settings screen it is a plain text box instead: type item ids separated by semicolons, such as Base.Hammer;Base.Screwdriver.",
+	Sandbox_HeadForTheHills_StartingEquipmentList = "Starting Equipment",
+	Sandbox_HeadForTheHills_StartingEquipmentList_tooltip = "What you wake up carrying. In single player this is a searchable list of everything vanilla and your installed mods provide. On a server's settings screen it is a plain text box instead: type item ids separated by semicolons, such as Base.Hammer;Base.Screwdriver.",
 }
