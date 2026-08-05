@@ -4,7 +4,7 @@ Welcome to [b]Head for the Hills![/b]
 
 You saw it coming and you left early. Pick "Remote Cabin" on the new game screen and you wake up in a cabin out in the woods with a truck outside and nobody for miles. Not a map mod, not an overhaul. Just somewhere else to start.
 
-[b]Verified on Build 42.20 Stable.[/b]
+[b]Verified on Build 42.20.2 Stable.[/b]
 
 Seventeen cabins, picked one at a time off the map. The game draws one at random when you start and does not tell you which. They run from a one-room shack to a farmhouse with seven rooms. Some sit a few hundred tiles from the nearest town and some are a couple of thousand, so which one you draw decides how bad your first week is.
 
@@ -58,8 +58,7 @@ If you run it on a server, tell me how it went.
 
 [h2]Something broken? Have a suggestion?[/h2]
 
-Comment with what happened and which cabin you drew. GitHub works too:
-https://github.com/robotsmeller/pz-head-for-the-hills
+Comment with what happened and which cabin you drew.
 
 If the thing that broke is some other mod spitting require() errors, that is usually a vanilla file that moved in a patch rather than a conflict with anything here. I maintain a separate mod that shims those back into place:
 [url=https://steamcommunity.com/sharedfiles/filedetails/?id=3721648770]Unbreaker[/url]

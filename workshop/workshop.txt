@@ -1,6 +1,5 @@
 version=1
 id=3777845024
 title=Head for the Hills!
-description=See workshop page
 tags=Build 42;Misc
-visibility=private
+visibility=public

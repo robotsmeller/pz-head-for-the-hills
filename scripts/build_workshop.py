@@ -37,6 +37,21 @@ SOURCES = {
     "preview.png": REPO / "assets" / "preview.png",
 }
 
+# The Workshop page description, one file, BBCode and all.
+#
+# WHY THIS IS WIRED IN: workshop.txt carried a single `description=See workshop
+# page`, which reads like a placeholder the uploader ignores. It is not. PZ
+# pushes whatever `description=` lines it finds, so every upload replaced the
+# real page text with that one line. It happened twice before anyone worked out
+# what was doing it, because the upload reports success and the damage is only
+# visible on the website afterwards.
+#
+# The format is one `description=` per line of text, blank lines included as a
+# bare `description=`. Zomboid/Workshop/ModTemplate/workshop.txt is the vanilla
+# example. Lines may contain `=` themselves, as BBCode urls do, which is fine:
+# the parser splits on the first one only.
+DESCRIPTION = REPO / "assets" / "workshop-description.txt"
+
 # PZ's in-game uploader refuses anything else, with "The preview.png file must be
 # exactly 256x256 pixels in size." Steam's own 1 MB cap is the constraint people
 # write about, and it is not the binding one here. Unbreaker ships a 1024px
@@ -47,6 +62,35 @@ MOD_SOURCE = REPO / "mod"
 # Never copied into the package. The originals are repo bookkeeping, and a
 # .gitkeep in an otherwise empty folder would ship an empty folder.
 EXCLUDE = {".gitkeep"}
+
+
+def description_lines():
+    """The page text as `description=` lines, one per source line."""
+    text = DESCRIPTION.read_text(encoding="utf-8").replace("\r\n", "\n")
+    return [f"description={line}" for line in text.rstrip("\n").split("\n")]
+
+
+def workshop_txt(existing):
+    """workshop.txt with our description, keeping the uploader's own fields.
+
+    `id` and `visibility` are written BY PZ, so the staged file is authoritative
+    for those and the repo copy must not clobber them. The description is the
+    opposite: the repo is authoritative and the staged copy is whatever survived
+    the last upload. So this merges rather than copying either way round.
+    """
+    source = existing if existing else SOURCES["workshop.txt"]
+    kept, wrote_description = [], False
+    for line in source.read_text(encoding="utf-8").replace("\r\n", "\n").split("\n"):
+        if line.startswith("description="):
+            # Collapse the old block down to one insertion point.
+            if not wrote_description:
+                kept.extend(description_lines())
+                wrote_description = True
+            continue
+        kept.append(line)
+    if not wrote_description:
+        kept.extend(description_lines())
+    return "\n".join(kept).rstrip("\n") + "\n"
 
 
 def mod_files():
@@ -71,7 +115,11 @@ def check(plan):
         if not destination.exists():
             missing.append(destination)
         elif destination.name == "workshop.txt":
-            continue          # owned by the uploader once it exists, see below
+            # id and visibility belong to the uploader, the description belongs
+            # to us, so compare against the merge rather than against either file.
+            wanted = workshop_txt(destination)
+            if destination.read_text(encoding="utf-8").replace("\r\n", "\n") != wanted:
+                changed.append(destination)
         elif not filecmp.cmp(source, destination, shallow=False):
             changed.append(destination)
 
@@ -94,6 +142,13 @@ def main():
         if not source.exists():
             print(f"FAILED: {source} is missing")
             return 1
+    # Loud, because a missing description file would otherwise build a package
+    # that quietly wipes the Workshop page on upload, which is the exact bug
+    # this whole mechanism exists to stop.
+    if not DESCRIPTION.exists():
+        print(f"FAILED: {DESCRIPTION} is missing; uploading without it would "
+              f"blank the Workshop page description")
+        return 1
     if not (MOD_SOURCE / "mod.info").exists():
         print(f"FAILED: {MOD_SOURCE / 'mod.info'} is missing")
         return 1
@@ -137,9 +192,15 @@ def main():
         # stamps the assigned id into it on first publish and rewrites the
         # visibility to whatever was chosen. Copying the repo's copy over the
         # top would blank the id, and an upload with a blank id creates a
-        # SECOND Workshop item rather than updating the first. So it is seeded
-        # once and never overwritten. Unbreaker's notes carry the same warning.
-        if destination.name == "workshop.txt" and destination.exists():
+        # SECOND Workshop item rather than updating the first. So those fields
+        # are left exactly as the uploader left them, and only the description
+        # block is rewritten from the repo. Unbreaker carries the same warning
+        # about the id, and the same description landmine.
+        if destination.name == "workshop.txt":
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(
+                workshop_txt(destination if destination.exists() else None),
+                encoding="utf-8")
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
