@@ -1166,9 +1166,21 @@ local function onNewGame(playerObj, square)
     -- Not our scenario, not our business. This runs before anything is granted
     -- or placed, on client and server alike, so a character who picked a normal
     -- start is left exactly as vanilla made them.
-    if not startedAtScenarioPoint(playerObj:getCurrentSquare() or square) then
+    --
+    -- Both branches announce themselves on purpose. The bug this gate fixes was
+    -- invisible for its whole life because nothing ever said what the mod had
+    -- decided, and diagnosing it cost a session of measuring the wrong things.
+    -- A line in console.txt turns "why did I get a truck" into a lookup.
+    local centre = playerObj:getCurrentSquare() or square
+    if not startedAtScenarioPoint(centre) then
+        print(string.format(
+            "[HeadForTheHills] start at %s is not one of this mod's spawn points; standing down",
+            centre and (centre:getX() .. "," .. centre:getY()) or "an unloaded square"))
         return
     end
+    print(string.format(
+        "[HeadForTheHills] start at %d,%d matches a spawn point; running the scenario",
+        centre:getX(), centre:getY()))
 
     -- A connected client stops here. It hands over the equipment and the key,
     -- which are its own player's inventory, and leaves the world to the server:
