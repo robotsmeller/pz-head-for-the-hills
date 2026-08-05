@@ -1,0 +1,64 @@
+[b]What is this?[/b]
+A start scenario. Pick "Remote Cabin" on the new game screen and you wake up in a cabin out in the woods with a truck outside and nobody for miles. Not a map mod, not an overhaul. Just somewhere else to start.
+
+[b]Verified on Build 42.20 Stable.[/b]
+
+Seventeen cabins, picked one at a time off the map. The game draws one at random when you start and does not tell you which. They run from a one-room shack to a farmhouse with seven rooms, and the drive to the nearest town is anywhere from about 600 tiles to about 2,400. Which one you draw decides how bad your first week is.
+
+[hr][/hr]
+
+[h2]What you wake up with[/h2]
+
+A vehicle parked outside, with the key on you.
+
+The key to the cabin, because being locked out of your own hideout is a stupid way to start.
+
+A well in the yard, if the place has no water of its own. Out in the grass where a well goes, not bolted to the back wall.
+
+A generator against the house, if the place has none. It is not running. You can have it fuelled and wired in if you like, but you flip the switch yourself. Waking up to a generator already roaring in the middle of the woods rather defeats the point.
+
+Whatever starting gear you picked, and the season you picked.
+
+Anything the cabin already has, it keeps. No second well dug beside the first one.
+
+[h2]All of it is a setting[/h2]
+
+Every piece above can be turned off or changed on the sandbox page.
+
+Two of the settings are proper pickers rather than text boxes. The starting vehicle is a dropdown of every vehicle currently loaded, and the starting equipment is a searchable list of every item currently loaded. Both read your game as it is, so anything your other mods add shows up in them.
+
+[h2]Somewhere specific in mind?[/h2]
+
+Custom Start Coordinate takes a coordinate off [url=https://map.projectzomboid.com/]map.projectzomboid.com[/url] and starts you there instead. Paste it however the site gives it to you.
+
+A spot you choose yourself gets none of the checking the seventeen had, so things may land oddly or not fit. If you pick a spot in the water it will move you to the nearest real ground, because nobody has ever wanted to start in a lake.
+
+[h2]What it does NOT do[/h2]
+
+No new map, no new tiles, no new items, no new traits.
+
+It does not touch zombies, loot, weather or any mechanic. It puts you somewhere and hands you a few things. That is the whole mod.
+
+It does not need any other mod, and everything it places is base game. If you have a mod that replaces wells, this one will notice and leave your cabin alone rather than putting somebody else's well in your yard.
+
+It will not stop the woods being the woods. There is no safe zone. Whatever wandered up there before you did is still up there.
+
+[h2]Multiplayer[/h2]
+
+Written for it and untested. World objects are created once by the server and inventory is handed out per player, which is how the base game does both. On a server settings screen the two pickers show as plain text boxes, so type a vehicle id like Base.PickUpTruck, and item ids separated by semicolons.
+
+If you run it on a server, tell me how it went.
+
+[h2]Something broken? Have a suggestion?[/h2]
+
+Comment with what happened and which cabin you drew. GitHub works too:
+https://github.com/robotsmeller/pz-head-for-the-hills
+
+[list]
+[*] Build 42.20+
+[*] No dependencies
+[*] Safe to add to an existing save, but it only does anything on a new character
+[*] Multiplayer untested
+[/list]
+
+[b]This is a human-AI collab. Mostly written and fully tested by an actual human being. Deal with it.[/b]
