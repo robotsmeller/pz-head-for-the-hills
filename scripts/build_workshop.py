@@ -70,6 +70,8 @@ def check(plan):
     for destination, source in plan.items():
         if not destination.exists():
             missing.append(destination)
+        elif destination.name == "workshop.txt":
+            continue          # owned by the uploader once it exists, see below
         elif not filecmp.cmp(source, destination, shallow=False):
             changed.append(destination)
 
@@ -131,6 +133,14 @@ def main():
         return 0
 
     for destination, source in plan.items():
+        # workshop.txt is written BY the uploader as well as read by it: PZ
+        # stamps the assigned id into it on first publish and rewrites the
+        # visibility to whatever was chosen. Copying the repo's copy over the
+        # top would blank the id, and an upload with a blank id creates a
+        # SECOND Workshop item rather than updating the first. So it is seeded
+        # once and never overwritten. Unbreaker's notes carry the same warning.
+        if destination.name == "workshop.txt" and destination.exists():
+            continue
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
     for path in stale:
