@@ -1,9 +1,12 @@
-[b]What is this?[/b]
-A start scenario. Pick "Remote Cabin" on the new game screen and you wake up in a cabin out in the woods with a truck outside and nobody for miles. Not a map mod, not an overhaul. Just somewhere else to start.
+Doesn't it seem weird that you're home eating dinner and then all of a sudden there's just zombies everywhere? I don't know about you all, but if I even thought for a second zombies were coming to my hood, I'd be out the door and heading for the hills to ride it out before my town became infested.
+
+Welcome to [b]Head for the Hills![/b]
+
+You saw it coming and you left early. Pick "Remote Cabin" on the new game screen and you wake up in a cabin out in the woods with a truck outside and nobody for miles. Not a map mod, not an overhaul. Just somewhere else to start.
 
 [b]Verified on Build 42.20 Stable.[/b]
 
-Seventeen cabins, picked one at a time off the map. The game draws one at random when you start and does not tell you which. They run from a one-room shack to a farmhouse with seven rooms, and the drive to the nearest town is anywhere from about 600 tiles to about 2,400. Which one you draw decides how bad your first week is.
+Seventeen cabins, picked one at a time off the map. The game draws one at random when you start and does not tell you which. They run from a one-room shack to a farmhouse with seven rooms. Some sit a few hundred tiles from the nearest town and some are a couple of thousand, so which one you draw decides how bad your first week is.
 
 [hr][/hr]
 
