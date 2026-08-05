@@ -1106,9 +1106,69 @@ local function runSpawn(playerObj, opts, centre)
     spawnGenerator(playerObj, opts, centre, ctx)
 end
 
+--- How far from a declared spawn point still counts as "started here".
+---
+--- The player is placed on the exact coordinate the region names, so this only
+--- has to absorb the nudges: the water rescue above moves them a few tiles, and
+--- a coordinate taken off the map site can land a room or two off centre. The
+--- widest building in the cabin list is 20x11, so 24 covers a whole property
+--- with slack and is still small enough that no town start falls inside one.
+local SPAWN_MATCH_RADIUS = 24
+
+--- The points this mod is allowed to act on.
+---
+--- A custom coordinate replaces the cabin list rather than adding to it, which
+--- mirrors setCustomPoint: when someone types a spot, that spot is the scenario
+--- and the cabins are not.
+local function scenarioPoints()
+    local custom = SandboxVars and SandboxVars.HeadForTheHills
+        and SandboxVars.HeadForTheHills.CustomSpawnPoint
+    -- trim() is local to SpawnRegion.lua, so the whitespace strip is inline here.
+    if custom and tostring(custom):match("^%s*(.-)%s*$") ~= "" and HFTH_SpawnRegion then
+        local point = HFTH_SpawnRegion.parsePoint(tostring(custom))
+        if point then return { point } end
+    end
+    return HFTH_SpawnRegion and HFTH_SpawnRegion.CABINS or nil
+end
+
+--- True when this character actually started at one of this mod's spawn points.
+---
+--- WHY THIS EXISTS: until this check was added, the only gate on the whole start
+--- scenario was "is the mod enabled". SandboxVars.HeadForTheHills exists the
+--- moment the mod loads, so every new character on every start anywhere on the
+--- map was handed the vehicle, the well, the generator and the cabin key. It was
+--- found by starting an ordinary game while testing an unrelated mod and being
+--- given a truck key. A start scenario has no business touching a character who
+--- did not choose it.
+---
+--- Positional rather than reading the chosen region, because the region is only
+--- known to the character-creation UI (MapSpawnSelect.instance.selectedRegion),
+--- which does not exist by OnNewGame and never exists on a server.
+local function startedAtScenarioPoint(centre)
+    if not centre then return false end
+    local points = scenarioPoints()
+    if not points then return false end
+
+    local cx, cy = centre:getX(), centre:getY()
+    for _, point in ipairs(points) do
+        if math.abs(cx - point.posX) <= SPAWN_MATCH_RADIUS
+            and math.abs(cy - point.posY) <= SPAWN_MATCH_RADIUS then
+            return true
+        end
+    end
+    return false
+end
+
 local function onNewGame(playerObj, square)
     local opts = options()
     if not opts or not playerObj then return end
+
+    -- Not our scenario, not our business. This runs before anything is granted
+    -- or placed, on client and server alike, so a character who picked a normal
+    -- start is left exactly as vanilla made them.
+    if not startedAtScenarioPoint(playerObj:getCurrentSquare() or square) then
+        return
+    end
 
     -- A connected client stops here. It hands over the equipment and the key,
     -- which are its own player's inventory, and leaves the world to the server:
