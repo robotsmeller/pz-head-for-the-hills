@@ -23,6 +23,7 @@ update just because the game was launched.
 
 import argparse
 import filecmp
+import struct
 import shutil
 import sys
 from pathlib import Path
@@ -35,6 +36,12 @@ SOURCES = {
     "workshop.txt": REPO / "workshop" / "workshop.txt",
     "preview.png": REPO / "assets" / "preview.png",
 }
+
+# PZ's in-game uploader refuses anything else, with "The preview.png file must be
+# exactly 256x256 pixels in size." Steam's own 1 MB cap is the constraint people
+# write about, and it is not the binding one here. Unbreaker ships a 1024px
+# preview because it uploads through SteamCMD, which does not check.
+PREVIEW_SIZE = (256, 256)
 MOD_SOURCE = REPO / "mod"
 
 # Never copied into the package. The originals are repo bookkeeping, and a
@@ -87,6 +94,16 @@ def main():
             return 1
     if not (MOD_SOURCE / "mod.info").exists():
         print(f"FAILED: {MOD_SOURCE / 'mod.info'} is missing")
+        return 1
+
+    # Checked here rather than discovered halfway through the upload wizard.
+    with open(SOURCES["preview.png"], "rb") as handle:
+        header = handle.read(26)
+    size = struct.unpack(">II", header[16:24]) if header[12:16] == b"IHDR" else None
+    if size != PREVIEW_SIZE:
+        print(f"FAILED: preview.png is {size[0]}x{size[1]} and the uploader "
+              f"needs exactly {PREVIEW_SIZE[0]}x{PREVIEW_SIZE[1]}"
+              if size else "FAILED: preview.png is not a readable PNG")
         return 1
 
     # B42 silently rejects a mod whose versioned mod.info is missing or out of
