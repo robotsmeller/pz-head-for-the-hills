@@ -36,7 +36,7 @@ Nothing to configure, no compatibility patch, no list for me to keep updated. Wh
 
 [h2]Somewhere specific in mind?[/h2]
 
-Custom Start Coordinate takes a coordinate off [url=https://map.projectzomboid.com/]map.projectzomboid.com[/url] and starts you there instead. Paste it however the site gives it to you.
+Custom Start Coordinate takes a coordinate off [url=https://map.projectzomboid.com/]map.projectzomboid.com[/url] and starts you there instead. Just the two numbers: 12462,8938 or the site's own 12462x8938 both work, as do a space or a semicolon between them. Not the whole URL, only the numbers out of it.
 
 A spot you choose yourself gets none of the checking the seventeen had, so things may land oddly or not fit. If you pick a spot in the water it will move you to the nearest real ground, because nobody has ever wanted to start in a lake.
 
