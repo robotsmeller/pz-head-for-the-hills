@@ -28,7 +28,7 @@ Anything the cabin already has, it keeps. No second well dug beside the first on
 
 Every piece above can be turned off or changed on the sandbox page.
 
-Two of the settings are proper pickers rather than text boxes. The starting vehicle is a dropdown of every vehicle currently loaded, and the starting equipment is a searchable list of every item currently loaded. Both read your game as it is, so anything your other mods add shows up in them.
+Two of the settings are proper pickers rather than text boxes. The starting vehicle is a dropdown of every vehicle currently loaded, vanilla and custom both. The starting equipment is a searchable list of every item currently loaded, same deal. They read your game as it is, so whatever your other mods add is already in them.
 
 [h2]Somewhere specific in mind?[/h2]
 
